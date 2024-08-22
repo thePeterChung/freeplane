@@ -598,6 +598,18 @@
             <Entry name="formula.TracePrecedentsAction" plugin="org.freeplane.plugin.formula" accelerator="alt F6" />
             <Entry name="formula.TraceDependentsAction" plugin="org.freeplane.plugin.formula" accelerator="alt F7" />
 			<Entry builder="separator" />
+			<Entry name="ChatModelBuilder" >
+				<Entry name="ChatAnthropic" accelerator="meta 0" />
+				<Entry name="ChatOllama" accelerator="meta MINUS" />
+				<Entry name="ChatOpenAi" accelerator="meta EQUALS" />
+			</Entry>
+			<Entry name="ChatWithContext" >
+				<Entry name="ChatParentNode" accelerator="meta P" />
+				<Entry name="ChatNode" accelerator="meta OPEN_BRACKET" />
+				<Entry name="ChatChildNode" accelerator="meta CLOSE_BRACKET" />
+			</Entry>
+			<Entry name="ChatSingleNode" accelerator="control ENTER" />
+			<Entry builder="separator" />
 			<Entry name="SetAcceleratorOnNextClickAction" />
 			<Entry name="acceleratorPresets">
 				<Entry name="load_accelerator_presets" >

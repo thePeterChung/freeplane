@@ -1,0 +1,24 @@
+plugins {
+    id 'java'
+}
+
+group = 'org.freeplane.plugin.chat'
+version = '1.12.2'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':freeplane')
+    lib 'dev.langchain4j:langchain4j-open-ai:0.33.0'
+    lib 'dev.langchain4j:langchain4j-anthropic:0.33.0'
+    lib 'dev.langchain4j:langchain4j-ollama:0.33.0'
+    lib 'dev.langchain4j:langchain4j:0.33.0'
+    testImplementation platform('org.junit:junit-bom:5.10.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}

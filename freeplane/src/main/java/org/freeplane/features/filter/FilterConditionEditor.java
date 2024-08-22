@@ -378,6 +378,17 @@ public class FilterConditionEditor {
 		values.getEditor().addActionListener(enterKeyActionListener);
 	}
 
+	public void setCondition(String condition) {
+		values.getEditor().setItem(condition);
+	}
+
+	public void setFilter(int index) {
+		filteredPropertiesComponent.setSelectedItem(index);
+	}
+	public void setEvaluation(int index) {
+		elementaryConditions.setSelectedIndex(index);
+	}
+
 	public JComponent getPanel() {
 		return panel;
 	}

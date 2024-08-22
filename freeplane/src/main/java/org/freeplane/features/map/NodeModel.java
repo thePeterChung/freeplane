@@ -168,6 +168,9 @@ public class NodeModel{
 	protected List<NodeModel> getChildrenInternal() {
 		return children;
 	}
+	public List<NodeModel> getTheChildren() {
+		return children;
+	}
 
 	protected void setChildrenInternal(List<NodeModel> chidren) {
 		this.children = chidren;

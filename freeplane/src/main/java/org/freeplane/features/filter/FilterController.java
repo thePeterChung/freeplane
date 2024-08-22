@@ -946,7 +946,7 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 	}
 
 
-	NodeModel findNextInSubtree(final NodeModel start, NodeModel subtreeRoot, Direction direction,
+	public NodeModel findNextInSubtree(final NodeModel start, NodeModel subtreeRoot, Direction direction,
 			final ICondition condition, Filter filter) {
 		NodeModel next = findNext(start, subtreeRoot, direction, condition, filter);
 		if(next == null && subtreeRoot != null && subtreeRoot != start) {
