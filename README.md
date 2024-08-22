@@ -23,6 +23,7 @@ Insert a node to map and name it "Tell me a joke" then select Tools -> Node Sing
 4. Tools -> Chat with Context -> Chat Children + Node - Selected node and children chat is added as context
 
 Attributes UserMessage and AiMessage are added to context.
+Add `--paste` to node core text to paste response as "Plain text as node hierarchy".
 
 ### Default Settings
 
