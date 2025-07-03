@@ -264,7 +264,7 @@ class ArchitectureViolationsPanel extends JPanel {
     private JComponent createRuleTableToolbar(AFreeplaneAction enableServerAction) {
         FreeplaneToolBar toolbar = new FreeplaneToolBar(SwingConstants.HORIZONTAL);
         AbstractButton enableServerButton = FreeplaneToolBar.createButton(enableServerAction);
-        JButton deleteTestResultButton = TranslatedElementFactory.createButtonWithIcon("code.DeleteConfigurationsAction.text" + ".icon", "code.DeleteConfigurationsAction.text");
+        JButton deleteTestResultButton = TranslatedElementFactory.createButtonWithIcon("code.DeleteConfigurationsAction.icon", "code.DeleteConfigurationsAction.text");
         deleteTestResultButton.addActionListener(e -> deleteSelectedTestResults());
         JButton exploreTestResultButton = TranslatedElementFactory.createButtonWithIcon("code.explore.icon", "code.explore");
         exploreTestResultButton.addActionListener(e -> exploreSelectedTestResult());
@@ -304,11 +304,11 @@ class ArchitectureViolationsPanel extends JPanel {
         return toolbar;
     }
 
-    void addDependencySelectionCallback(Consumer<Set<JavaClass> > listener) {
+    void addDependencySelectionCallback(Consumer<Object> listener) {
         violationTable.getSelectionModel().addListSelectionListener(
                 e -> {
                     if(!e.getValueIsAdjusting()) {
-                        listener.accept(getSelectedClasses());
+                        listener.accept(this);
                     }
                 });
         violationTable.addFocusListener(new FocusAdapter() {
@@ -316,13 +316,13 @@ class ArchitectureViolationsPanel extends JPanel {
             @Override
             public void focusGained(FocusEvent e) {
                 if(! e.isTemporary())
-                    listener.accept(getSelectedClasses());
+                    listener.accept(this);
             }
 
         });
     }
 
-    private Set<JavaClass> getSelectedClasses() {
+    public Set<JavaClass> getSelectedClasses() {
         if(exploredTestResultIndex == -1 || exploredTestResultIndex != selectedTestResultIndex)
             return Collections.emptySet();
 

@@ -9,8 +9,6 @@ if (macAppPropertiesFile.exists())
     macAppProperties.load(new FileInputStream(macAppPropertiesFile))
 }
 
-task macDist {}
-
 String macosapp_input_dir
 
 task macosapp_extractzip {
@@ -62,6 +60,8 @@ def defineMacBuildTasks =  { architecture ->
      delete "build/macosapp/app-image-${architecture}" 
    }
 
+   macosapp_extractzip.mustRunAfter macosapp_deleteAppImage
+
    def jpackage_macosxapp = tasks.create ("jpackage_macosxapp_${architecture}", Exec) {
 
    	commandLine jpackage,
@@ -69,6 +69,7 @@ def defineMacBuildTasks =  { architecture ->
    	 '--type', 'app-image',
      '--icon', 'freeplane_framework/mac-appbundler/freeplane.icns',
      '--app-version', majorVersion,
+     '--java-options', "-XX:-IgnoreUnrecognizedVMOptions",
      '--java-options', "-XX:MaxRAM=20g",
      '--java-options', "-XX:MaxRAMPercentage=15.0",
      '--java-options', '-Djava.security.manager=allow',
@@ -103,11 +104,9 @@ def defineMacBuildTasks =  { architecture ->
           }
           into "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app"
         }
-        if(architecture=='intel') {
-          copy {
-              from project('freeplane').configurations.maclib
-              into("build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib")
-          }
+        copy {
+            from project('freeplane').configurations.maclib
+            into("build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib")
         }
 
         copy {
@@ -127,7 +126,45 @@ def defineMacBuildTasks =  { architecture ->
 
       }
     }
-  
+  def signFlatlaf= tasks.create ("signFlatlaf_${architecture}", Exec) {
+        onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
+    commandLine 'bash', 'codesign/sign-jars-on-mac.sh',
+                "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib/flatlaf-*.jar",
+                macAppProperties['macapp.codesign.identity']
+    dependsOn macosapp_makeapp
+  }
+  def signJline= tasks.create ("signJline_${architecture}", Exec) {
+        onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
+    commandLine 'bash', 'codesign/sign-jars-on-mac.sh',
+                "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/plugins/org.freeplane.plugin.script/lib/jline-*.jar",
+                macAppProperties['macapp.codesign.identity']
+    dependsOn macosapp_makeapp
+}
+
+  def signJnr= tasks.create ("signJnr_${architecture}", Exec) {
+        onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
+    commandLine 'bash', 'codesign/sign-jars-on-mac.sh',
+                "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib/jnr-*.jar",
+                macAppProperties['macapp.codesign.identity']
+    dependsOn macosapp_makeapp
+}
+
+  def signVappearances= tasks.create ("signVappearances_${architecture}", Exec) {
+        onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
+    commandLine 'bash', 'codesign/sign-jars-on-mac.sh',
+                "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib/vappearances-*.jar",
+                macAppProperties['macapp.codesign.identity']
+    dependsOn macosapp_makeapp
+}
+
+  def signVaqua= tasks.create ("signVaqua_${architecture}", Exec) {
+        onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
+    commandLine 'bash', 'codesign/sign-jars-on-mac.sh',
+                "build/macosapp/app-image-${architecture}/Freeplane.app/Contents/app/core/org.freeplane.core/lib/vaqua-*.jar",
+                macAppProperties['macapp.codesign.identity']
+    dependsOn macosapp_makeapp
+}
+
   def signMacApp= tasks.create ("signMacApp_${architecture}", Exec) {
         onlyIf { Os.isFamily(Os.FAMILY_MAC) && macAppProperties['macapp.codesign.identity'] != null}
  
@@ -136,7 +173,7 @@ def defineMacBuildTasks =  { architecture ->
      '--app-image', "build/macosapp/app-image-${architecture}/Freeplane.app",
      '--mac-sign',
      '--mac-signing-key-user-name', macAppProperties['macapp.codesign.identity']
-        dependsOn macosapp_makeapp
+        dependsOn macosapp_makeapp, signFlatlaf, signJline, signJnr, signVappearances, signVaqua
     }
 
   def dmg4mac = tasks.create ("dmg4mac_${architecture}", Exec) {
@@ -162,11 +199,18 @@ def defineMacBuildTasks =  { architecture ->
       ant.move (file:"$globalDist/Freeplane-${majorVersion}.dmg", tofile:"$globalDist/Freeplane-${distVersion}-${architecture}.dmg")
     }
   }
+  def signDmg = tasks.create ("signDmg_${architecture}", Exec) {
+    commandLine 'bash', '-e', '-c', """
+    set -x; codesign --sign "Developer ID Application: ${macAppProperties['macapp.codesign.identity']}" $globalDist/Freeplane-${distVersion}-${architecture}.dmg
+    """
+    dependsOn dmg4mac
+  }
+
   def notarytool = tasks.create ("notarytool_${architecture}", Exec) {
     commandLine 'bash', '-e', '-c', """
-    set -x; xcrun notarytool submit $globalDist/Freeplane-${distVersion}-${architecture}.dmg --keychain-profile ${macAppProperties['macapp.notarytool.keychainprofile']} --no-s3-acceleration
+    set -x; xcrun notarytool submit $globalDist/Freeplane-${distVersion}-${architecture}.dmg --keychain-profile ${macAppProperties['macapp.notarytool.keychainprofile']}
     """
-    mustRunAfter dmg4mac
+    dependsOn signDmg
   }
 }
 

@@ -45,9 +45,7 @@ public interface ViewController {
 	public static final int LEFT = 1;
 	public static final int RIGHT = 2;
 	public static final int TOP = 0;
-	public static final String RESOURCE_ANTIALIAS = "antialias";
 
-	public static final String SLOW_SCROLLING = "slowScrolling";
 	public void changeNoteWindowLocation();
 
 	public void err(final String msg);
@@ -63,7 +61,7 @@ public interface ViewController {
 	public void insertComponentIntoSplitPane(JComponent noteViewerComponent);
 
 	public boolean isMenubarVisible();
-	
+
 	boolean isFullScreenEnabled();
 
 	public void openDocument(Hyperlink link) throws IOException;
@@ -123,6 +121,10 @@ public interface ViewController {
 
 	public void setMapOverviewVisible(boolean b);
 
+	public boolean isBookmarksToolbarVisible();
+
+	public void setBookmarksToolbarVisible(boolean b);
+
 	public boolean areScrollbarsVisible();
 
 	public void setScrollbarsVisible(boolean b);
@@ -133,4 +135,8 @@ public interface ViewController {
 	public Component getCurrentRootComponent();
 	public Component getMenuComponent();
 	public List<? extends Component> getMapViewVector();
+
+	public void openMapNextView();
+
+	public void openMapPreviousView();
 }

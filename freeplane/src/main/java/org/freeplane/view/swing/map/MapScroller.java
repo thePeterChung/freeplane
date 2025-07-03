@@ -12,7 +12,8 @@ import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.components.UITools;
 import org.freeplane.features.map.IMapSelection.NodePosition;
 import org.freeplane.features.map.NodeModel;
-import org.freeplane.features.ui.ViewController;
+import org.freeplane.features.map.NodeRelativePath;
+import org.freeplane.view.swing.map.MapViewScrollPane.MapViewPort;
 
 class MapScroller {
 
@@ -53,17 +54,30 @@ class MapScroller {
     private boolean slowScroll;
 	private int extraWidth;
 	final private MapView map;
+	private boolean scrollsNodeTreeToVisible;
 
 
 
 	MapScroller(MapView map) {
 		this.map = map;
 		this.anchorContentLocation = null;
+		this.anchor = null;
 	}
 
 	void anchorToNode(final NodeView view, final float horizontalPoint, final float verticalPoint) {
 		if (view != null && view.getMainView() != null) {
-			setAnchorView(view);
+			if(scrollingDirective == ScrollingDirective.DONE || view.isRoot() || anchor == null) {
+				anchor = view;
+			}
+			else if (! (anchor.isRoot() || anchor == view || anchor.isAncestorOf(view))){
+				final NodeModel lastAnchor = anchor.getNode();
+				final NodeModel newAnchor = view.getNode();
+				final NodeRelativePath nodeRelativePath = new NodeRelativePath(lastAnchor, newAnchor);
+				final NodeModel commonAncestor = nodeRelativePath.commonAncestor();
+				final NodeView newAnchorView = view.getMap().getNodeView(commonAncestor);
+				if(newAnchorView  != null)
+					anchor = newAnchorView;
+			}
 			anchorHorizontalPoint = horizontalPoint;
 			anchorVerticalPoint = verticalPoint;
 			this.anchorContentLocation = getAnchorCenterPoint();
@@ -109,10 +123,13 @@ class MapScroller {
         scrollNode(nodeView, ScrollingDirective.of(position), slowScroll);
     }
 
-    void scrollNodeToCenter(NodeView node) {
-        scrollNode(node, ScrollingDirective.SCROLL_NODE_TO_CENTER,
-                ResourceController.getResourceController().getBooleanProperty("slow_scroll_selected_node"));
+    void scrollNodeToCenter(NodeView node, boolean slow) {
+        scrollNode(node, ScrollingDirective.SCROLL_NODE_TO_CENTER, slow);
     }
+
+	boolean shouldScrollSlowly() {
+		return ResourceController.getResourceController().getBooleanProperty("slow_scroll_selected_node");
+	}
 
 
 	private void scrollNode(final NodeView node, ScrollingDirective scrollingDirective, boolean slowScroll) {
@@ -120,8 +137,11 @@ class MapScroller {
 			this.slowScroll = slowScroll;
 			scrolledNode = node;
 			this.scrollingDirective = scrollingDirective;
-			if (map.isDisplayable() && map.frameLayoutCompleted() && map.isValid())
-				scrollNodeNow(slowScroll);
+			if (map.isDisplayable() && map.frameLayoutCompleted() && map.isValid()) {
+				if(slowScroll)
+					startSlowScrolling();
+				scrollNodeNow();
+			}
 		}
 	}
 
@@ -206,29 +226,26 @@ class MapScroller {
 		return rect;
 	}
 
-	private void scrollNodeNow(boolean slowScroll) {
-		final JViewport viewPort = (JViewport) map.getParent();
-		if(slowScroll)
-			viewPort.putClientProperty(ViewController.SLOW_SCROLLING, 20);
+	private void scrollNodeNow() {
 		final Rectangle rect = calculateOptimalVisibleRectangle();
 		map.scrollRectToVisible(rect);
 		scrolledNode = null;
 		scrollingDirective = ScrollingDirective.DONE;
 		this.slowScroll = false;
-		if(! anchor.equals(map.getRoot()))
-			this.anchor = map.getRoot();
+		this.anchor = null;
 		this.anchorContentLocation = getAnchorCenterPoint();
 	}
 
-	void setAnchorView(final NodeView view) {
-		anchor = view;
+	private void startSlowScrolling() {
+		final MapViewPort viewPort = (MapViewPort) map.getParent();
+		viewPort.startSlowScrolling(20);
 	}
 
 	private Point getAnchorCenterPoint() {
 		if (! map.isDisplayable()) {
 			return null;
 		}
-		final JComponent mainView = anchor.getMainView();
+		final JComponent mainView = getAnchor().getMainView();
 		final int referenceWidth = mainView.getWidth();
 		final int referenceHeight = mainView.getHeight();
 		final JViewport viewPort = (JViewport) map.getParent();
@@ -236,6 +253,10 @@ class MapScroller {
 				(int) (referenceHeight * anchorVerticalPoint) - viewPort.getHeight()/2);
 		UITools.convertPointToAncestor(mainView, anchorCenterPoint, viewPort);
 		return anchorCenterPoint;
+	}
+
+	private NodeView getAnchor() {
+		return anchor != null ? anchor : map.getRoot();
 	}
 
 	void scrollNodeToVisible(final NodeView node) {
@@ -252,8 +273,10 @@ class MapScroller {
         }
 		if (scrolledNode != null && scrollingDirective != ScrollingDirective.MAKE_NODE_VISIBLE) {
 			if (node != scrolledNode) {
-				if (scrollingDirective == ScrollingDirective.SCROLL_TO_BEST_ROOT_POSITION && !node.isRoot())
-					scrollingDirective = ScrollingDirective.SCROLL_NODE_TO_CENTER;
+				if (scrollingDirective == ScrollingDirective.SCROLL_TO_BEST_ROOT_POSITION && !node.isRoot()) {
+					showsSelectedAfterScroll = true;
+					return;
+				}
 				scrollNode(node, scrollingDirective, false);
 			}
 			return;
@@ -281,6 +304,8 @@ class MapScroller {
 			    .getHeight()
 			        + VERT_SPACE2));
 		}
+		scrollingDirective = ScrollingDirective.DONE;
+		scrolledNode = null;
 	}
 
 	void scrollToRootNode() {
@@ -288,33 +313,38 @@ class MapScroller {
 	}
 
 	void scrollView() {
-		if(scrolledNode != null && scrollingDirective != ScrollingDirective.MAKE_NODE_VISIBLE
-				&& scrollingDirective != ScrollingDirective.ANCHOR){
-			scrollNode(scrolledNode, scrollingDirective, slowScroll);
-			return;
-		}
-		if (anchorContentLocation == null) {
-			return;
-		}
 		final JViewport vp = (JViewport) map.getParent();
 		final Point viewPosition = vp.getViewPosition();
 		final Point oldAnchorContentLocation = anchorContentLocation;
 		final Point newAnchorContentLocation = getAnchorCenterPoint();
-		final int deltaX = newAnchorContentLocation.x - oldAnchorContentLocation.x;
-		final int deltaY = newAnchorContentLocation.y - oldAnchorContentLocation.y;
-		if (deltaX != 0 || deltaY != 0) {
-			viewPosition.x += deltaX;
-			viewPosition.y += deltaY;
-			vp.setViewPosition(viewPosition);
+		if(oldAnchorContentLocation != null && (slowScroll ||
+				scrollingDirective == ScrollingDirective.DONE ||
+				scrollingDirective == ScrollingDirective.MAKE_NODE_VISIBLE ||
+				scrollingDirective == ScrollingDirective.ANCHOR)) {
+			final int deltaX = newAnchorContentLocation.x - oldAnchorContentLocation.x;
+			final int deltaY = newAnchorContentLocation.y - oldAnchorContentLocation.y;
+			if (deltaX != 0 || deltaY != 0) {
+				viewPosition.x += deltaX;
+				viewPosition.y += deltaY;
+				vp.setViewPosition(viewPosition);
+			}
+		}
+		final NodeView scrolledNode = this.scrolledNode;
+		if(scrolledNode != null && scrollingDirective != ScrollingDirective.MAKE_NODE_VISIBLE
+				&& scrollingDirective != ScrollingDirective.ANCHOR){
+			scrollNode(scrolledNode, scrollingDirective, slowScroll);
 		}
 
+		if(scrollsNodeTreeToVisible) {
+			scrollNodeTreeToVisible(scrolledNode, slowScroll);
+		}
         showSelectedAfterScroll();
 		if(scrolledNode != null &&
 		        (scrollingDirective == ScrollingDirective.MAKE_NODE_VISIBLE))
 			scrollNodeToVisible(scrolledNode, extraWidth);
-		scrolledNode = null;
+		this.scrolledNode = null;
 		scrollingDirective = ScrollingDirective.DONE;
-		setAnchorView(map.getRoot());
+		anchor = null;
 		anchorHorizontalPoint = anchorVerticalPoint = 0.5f;
 		this.anchorContentLocation = getAnchorCenterPoint();
 	}
@@ -333,8 +363,15 @@ class MapScroller {
 			anchorContentLocation = getAnchorCenterPoint();
 	}
 
-	void scrollNodeTreeToVisible(NodeView node) {
-		final Rectangle visibleRect = map.getVisibleRect();
+	void scrollNodeTreeToVisible(NodeView node, boolean slow) {
+		if(! map.isValid()) {
+			scrolledNode = node;
+			scrollsNodeTreeToVisible = true;
+			slowScroll = slow;
+			return;
+		}
+		MapViewPort viewport = (MapViewPort) map.getParent();
+		final Rectangle visibleRect = viewport.getViewRect();
 		Rectangle requiredRectangle = new Rectangle(node.getSize());
 		int margin = 30;
 		int spaceToCut = node.getSpaceAround() - margin;
@@ -362,13 +399,16 @@ class MapScroller {
 			}
 		}
 		keepShowingSelectedAfterScroll();
+		if(slow)
+			startSlowScrolling();
+		scrollsNodeTreeToVisible = false;
 		node.scrollRectToVisible(requiredRectangle);
 		showSelectedAfterScroll();
 	}
 
 	void anchorToRoot() {
 		final NodeView root = map.getRoot();
-		if(! root.equals(anchor))
+		if(anchor != null && ! anchor.equals(root))
 		    anchorToNode(root, 0, 0);
 	}
 

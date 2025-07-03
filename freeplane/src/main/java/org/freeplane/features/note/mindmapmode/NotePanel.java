@@ -23,8 +23,10 @@ import javax.swing.Icon;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
+import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
 import javax.swing.ScrollPaneConstants;
@@ -51,6 +53,7 @@ import org.freeplane.features.note.mindmapmode.MNoteController.NoteDocumentListe
 import org.freeplane.features.spellchecker.mindmapmode.SpellCheckerController;
 import org.freeplane.features.text.mindmapmode.FreeplaneToSHTMLPropertyChangeAdapter;
 import org.freeplane.features.text.mindmapmode.MTextController;
+import org.freeplane.view.swing.map.LinkOpener;
 
 import com.lightdev.app.shtm.SHTMLEditorPane;
 import com.lightdev.app.shtm.SHTMLPanel;
@@ -96,6 +99,9 @@ class NotePanel extends JPanel {
 		htmlViewerPanel.setOpaque(true);
 		htmlViewerPanel.setEditable(false);
 		htmlViewerPanel.setEditorKitForContentType(CONTENT_TYPE_TEXT_HTML, ScaledEditorKit.create());
+		final LinkOpener linkOpener = new LinkOpener(noteManager::getNode);
+		htmlViewerPanel.addMouseListener(linkOpener);
+		htmlViewerPanel.addMouseMotionListener(linkOpener);
 		iconViewerPanel = new JLabel();
 		iconViewerPanel.setVerticalAlignment(SwingConstants.TOP);
 
@@ -175,10 +181,17 @@ class NotePanel extends JPanel {
 
 			@Override
 			public void focusLost(FocusEvent e) {
-				if (isEditing && e.getOppositeComponent() != null) {
-					noteManager.saveNote();
-				    noteManager.updateEditor();
-				}
+			    if(! isEditing)
+			        return;
+				Component oppositeComponent = e.getOppositeComponent();
+                if (oppositeComponent == null)
+                    return;
+                if(oppositeComponent.getClass().equals(JRootPane.class))
+                    return;
+                if (SwingUtilities.getWindowAncestor(oppositeComponent) instanceof JFrame) {
+                    noteManager.saveNote();
+                    noteManager.updateEditor();
+                }
 			}
 
 			@Override

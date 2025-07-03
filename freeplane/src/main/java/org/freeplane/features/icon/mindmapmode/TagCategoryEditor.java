@@ -20,8 +20,8 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Event;
-import java.awt.Font;
 import java.awt.Frame;
+import java.awt.GraphicsEnvironment;
 import java.awt.Toolkit;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.DataFlavor;
@@ -39,17 +39,12 @@ import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.font.FontRenderContext;
-import java.awt.geom.AffineTransform;
-import java.awt.geom.Rectangle2D;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EventObject;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -57,7 +52,6 @@ import javax.swing.AbstractAction;
 import javax.swing.AbstractCellEditor;
 import javax.swing.Action;
 import javax.swing.ActionMap;
-import javax.swing.DropMode;
 import javax.swing.InputMap;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -78,14 +72,10 @@ import javax.swing.WindowConstants;
 import javax.swing.event.TreeModelEvent;
 import javax.swing.event.TreeModelListener;
 import javax.swing.event.TreeSelectionEvent;
-import javax.swing.plaf.TreeUI;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellRenderer;
-import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeCellEditor;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
 
 import org.freeplane.core.extension.IExtension;
 import org.freeplane.core.resources.ResourceController;
@@ -95,11 +85,9 @@ import org.freeplane.core.resources.components.ResponsiveFlowLayout;
 import org.freeplane.core.ui.ColorTracker;
 import org.freeplane.core.ui.LabelAndMnemonicSetter;
 import org.freeplane.core.ui.components.JRestrictedSizeScrollPane;
-import org.freeplane.core.ui.components.TagIcon;
 import org.freeplane.core.ui.components.UITools;
 import org.freeplane.core.ui.textchanger.TranslatedElementFactory;
 import org.freeplane.core.util.TextUtils;
-import org.freeplane.features.icon.CategorizedTagForCategoryNode;
 import org.freeplane.features.icon.IconController;
 import org.freeplane.features.icon.IconRegistry;
 import org.freeplane.features.icon.Tag;
@@ -108,49 +96,16 @@ import org.freeplane.features.icon.TreeTagChangeListener;
 import org.freeplane.features.map.MapModel;
 import org.freeplane.features.mode.Controller;
 
-import net.infonode.docking.internalutil.DropAction;
-
 class TagCategoryEditor implements IExtension {
-    private static final int UUID_LENGTH = 36;
-
-    private static final int TRANSFERABLE_ID_LENGTH = UUID_LENGTH + System.lineSeparator().length();
-
-    @SuppressWarnings("serial")
-    static class TagCellRenderer extends DefaultTreeCellRenderer {
-        private Object rootNode; // Reference to the root node object
-
-        public TagCellRenderer(DefaultMutableTreeNode rootNode) {
-            this.rootNode = rootNode;
-            setHorizontalAlignment(CENTER);
-        }
-
-        @Override
-        public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel,
-                boolean expanded, boolean leaf, int row, boolean hasFocus) {
-
-            super.getTreeCellRendererComponent(tree, null, sel, expanded, leaf, row, hasFocus);
-            if (value instanceof DefaultMutableTreeNode) {
-                Object userObject = ((DefaultMutableTreeNode) value).getUserObject();
-                if (userObject instanceof Tag) {
-                    Tag tag = (Tag) userObject;
-
-                    if (value != rootNode) {
-                        setText(null);
-                        setIcon(new TagIcon(tag, getFont())); // Example of
-                                                              // setting
-                                                              // a custom icon
-                    } else {
-                        setText(tag.getContent());
-                    }
-                } else if (userObject != null) {
-                    setText(userObject.toString());
-                }
-            }
-
-            return this;
+    static boolean FORCE_HEADLESS_GRAPHICS_FOR_TEST = false;
+    private static class Invoker{
+        public static void invokeLater(Runnable runnable) {
+            if(FORCE_HEADLESS_GRAPHICS_FOR_TEST || GraphicsEnvironment.isHeadless())
+                runnable.run();
+            else
+                SwingUtilities.invokeLater(runnable);
         }
     }
-
     class TagCellEditor extends AbstractCellEditor implements TreeCellEditor {
 
         private static final long serialVersionUID = 1L;
@@ -180,7 +135,7 @@ class TagCategoryEditor implements IExtension {
         public Component getTreeCellEditorComponent(JTree tree, Object value, boolean isSelected,
                 boolean expanded, boolean leaf, int row) {
             currentNode = (DefaultMutableTreeNode) value;
-            Tag tag = (Tag) currentNode.getUserObject();
+            Tag tag = tagCategories.tagWithoutCategories(currentNode);
             String content = tag.getContent();
 			textField.setText(content);
             textField.setColumns(Math.max(30, content.length()));
@@ -199,16 +154,14 @@ class TagCategoryEditor implements IExtension {
 
         @Override
         public Object getCellEditorValue() {
-            Tag tag = (Tag) currentNode.getUserObject();
+            Tag tag = tagCategories.tagWithoutCategories(currentNode);
             String text = textField.getText();
             if(text.isEmpty())
                 return tag;
-            Tag categorizedTag;
             if(tag.isEmpty())
-                categorizedTag = tagCategories.createTag(currentNode, text);
+                return new Tag(text);
             else
-                categorizedTag = tagCategories.createTag(currentNode, text, tag.getColor());
-            return new Tag(text, categorizedTag.getColor());
+                return new Tag(text, tag.getColor());
         }
 
         @Override
@@ -222,7 +175,7 @@ class TagCategoryEditor implements IExtension {
             DefaultMutableTreeNode parent = (DefaultMutableTreeNode) editingPath.getParentPath().getLastPathComponent();
             List<String> previousLastSelectionParentsNodes = lastSelectionParentsNodes;
             if(parent == tagCategories.getUncategorizedTagsNode())
-                lastSelectionParentsNodes = Collections.singletonList("");
+                lastSelectionParentsNodes = Collections.singletonList(TagCategories.UNCATEGORIZED_NODE);
             boolean pathSelected = tree.isPathSelected(editingPath);
             fireEditingStopped();
             if(pathSelected && ! tree.isPathSelected(editingPath))
@@ -238,10 +191,7 @@ class TagCategoryEditor implements IExtension {
     }
 
     @SuppressWarnings("serial")
-    class TreeTransferHandler extends TransferHandler {
-
-        public TreeTransferHandler() {
-        }
+    private class TreeTransferHandler extends TransferHandler {
 
         @Override
         public int getSourceActions(JComponent c) {
@@ -253,31 +203,7 @@ class TagCategoryEditor implements IExtension {
             if(c != tree)
                 throw new IllegalArgumentException("Unexpected argument " + c);
             saveLastSelectionParentsNodes();
-            return createTransferable();
-        }
-
-        TagCategorySelection createTransferable() {
-            try {
-                final TreePath[] selectionPaths = getSelectionPaths();
-                if(selectionPaths == null)
-                    return null;
-                lastTransferableId = UUID.randomUUID().toString();
-                StringWriter tagCategoryWriter = new StringWriter();
-                StringWriter tagWriter = new StringWriter();
-                final DefaultMutableTreeNode uncategorizedTagsNode = tagCategories.getUncategorizedTagsNode();
-                for(TreePath treePath: selectionPaths) {
-                    final Object[] path = treePath.getPath();
-                    if(path.length == 1 && path[1] == uncategorizedTagsNode)
-                        return null;
-                    DefaultMutableTreeNode node = (DefaultMutableTreeNode) treePath.getLastPathComponent();
-                    TagCategories.writeTagCategories(node, "", tagCategoryWriter);
-                    tagCategories.writeCategorizedTag(node, tagWriter);
-                }
-                TagCategorySelection stringSelection = new TagCategorySelection(lastTransferableId, tagCategoryWriter.toString(), tagWriter.toString());
-                return stringSelection;
-            } catch (IOException e) {
-                return null;
-            }
+            return TagCategoryEditor.this.createTransferable();
         }
 
         @Override
@@ -329,7 +255,7 @@ class TagCategoryEditor implements IExtension {
                     childIndex--;
                 if(support.getDropAction() != MOVE)
                     lastTransferableId = "";
-                insertTransferable(parent, childIndex, support.getTransferable());
+                insertTransferable(parent, childIndex, support.getTransferable(), true);
                 return true;
             } catch (Exception e) {
                 e.printStackTrace();
@@ -340,11 +266,12 @@ class TagCategoryEditor implements IExtension {
      }
     class TagRenamer implements TreeModelListener, TreeTagChangeListener<Tag>{
         private final List<String> replacements = new ArrayList<>();
-        private boolean mergeIsRunning = false;
 
         @Override
         public void treeNodesChanged(TreeModelEvent e) {
-            SwingUtilities.invokeLater(() -> merge(e));
+            if(tagCategories.isMergeRunning())
+                return;
+            Invoker.invokeLater(() -> merge(e));
         }
 
         private void merge(TreeModelEvent e) {
@@ -354,64 +281,70 @@ class TagCategoryEditor implements IExtension {
 
         @Override
         public void valueForPathChanged(TreePath path, Tag newTag) {
-            if(mergeIsRunning)
+            if(tagCategories.isMergeRunning())
                 return;
             DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-            String commonPrefix = tagCategories.categorizedContent((DefaultMutableTreeNode) node.getParent());
-            final Tag oldTag = (Tag) node.getUserObject();
+            final Tag oldTag = tagCategories.categorizedTag(node);
             final String oldContent = oldTag.getContent();
-            final String newContent = newTag.getContent();
+            if(oldContent.isEmpty())
+                return;
+            String tagCategorySeparator = getTagCategorySeparator();
+            int lastIndexOfSeparator = oldContent.lastIndexOf(tagCategorySeparator);
+            final String newContent = lastIndexOfSeparator >= 0
+                    ? oldContent.substring(0,
+                            lastIndexOfSeparator + tagCategorySeparator.length())
+                            + newTag.getContent()
+                    : newTag.getContent();
             if(! newContent.equals(oldContent)) {
-                if(commonPrefix.isEmpty()) {
-                    addReplacement(oldContent, newContent);
-                }
-                else {
-                    addReplacement(commonPrefix + getTagCategorySeparator() +  oldContent,
-                        commonPrefix + getTagCategorySeparator() +  newContent);
-                }
+                addReplacement(oldContent, newContent);
             }
         }
 
         private void addReplacement(final String oldContent, final String newContent) {
-            tagCategories.removeTagsAndCategories(oldContent);
             replacements.add(oldContent);
             replacements.add(newContent);
         }
 
         @Override
         public void treeNodesInserted(TreeModelEvent e) {
-            if(mergeIsRunning || e.getTreePath().getLastPathComponent() != tagCategories.getUncategorizedTagsNode())
+            if(tagCategories.isMergeRunning())
                 return;
             Object[] insertedNodes = e.getChildren();
-            if(lastSelectionParentsNodes.size() == insertedNodes.length) {
+            if (e.getTreePath().getLastPathComponent() == tagCategories.getUncategorizedTagsNode()
+                    && (lastSelectionParentsNodes.size() != 1
+                        || lastSelectionParentsNodes.get(0) != TagCategories.UNCATEGORIZED_NODE)) {
+                uncategorizedNodesMoved();
+            }
+            else if(lastSelectionParentsNodes.size() == insertedNodes.length) {
+                int replacementStartIndex = replacements.size() - lastSelectionParentsNodes.size() * 2;
                 for(int i = 0; i < lastSelectionParentsNodes.size(); i++) {
-                    final String oldParent = lastSelectionParentsNodes.get(i);
-                    final int indexBefore = replacements.size() - lastSelectionParentsNodes.size() * 2;
-                    final DefaultMutableTreeNode insertedNode = (DefaultMutableTreeNode) insertedNodes[i];
-                    final Tag newTag = (Tag) insertedNode.getUserObject();
-                    String replacedContent;
-                    if(oldParent.isEmpty())
-                        replacedContent = newTag.getContent();
-                    else
-                        replacedContent = oldParent + getTagCategorySeparator() + newTag.getContent();
-                    final String newContent = tagCategories.categorizedContent(insertedNode);
-                    if(indexBefore < 0
-                            || ! replacements.get(indexBefore).equals(replacedContent)) {
+                    final int replacementIndex = replacementStartIndex + i * 2;
+                    if(replacementIndex < 0)
                         break;
+                    final String oldParent = lastSelectionParentsNodes.get(i);
+                    final DefaultMutableTreeNode insertedNode = (DefaultMutableTreeNode) insertedNodes[i];
+                    final String newContent = tagCategories.categorizedContent(insertedNode);
+                    if(oldParent == TagCategories.UNCATEGORIZED_NODE) {
+                        replacements.set(replacementIndex + 1, newContent);
+                        continue;
                     }
+                    final Tag newTag = tagCategories.tagWithoutCategories(insertedNode);
+                    String replacedContent = oldParent.isEmpty() ? newTag.getContent() : oldParent + getTagCategorySeparator() + newTag.getContent();
+                    if(replacements.get(replacementIndex).equals(replacedContent))
+                        replacements.set(replacementIndex + 1, newContent);
                     else
-                        replacements.set(indexBefore + 1, newContent);
+                        break;
                 }
             }
-            SwingUtilities.invokeLater(() -> merge(e));
+            Invoker.invokeLater(() -> merge(e));
         }
 
-        public void uncategorizedNodesMoved() {
+        private void uncategorizedNodesMoved() {
+            final int indexBefore = replacements.size() - lastSelectionParentsNodes.size() * 2;
             for(int i = 0; i < lastSelectionParentsNodes.size(); i++) {
-                final int indexBefore = replacements.size() - lastSelectionParentsNodes.size() * 2;
-                replacements.set(indexBefore + 1, TagCategories.UNCATEGORIZED_NODE);
+                replacements.set(indexBefore + i * 2 + 1, TagCategories.UNCATEGORIZED_NODE);
             }
-            SwingUtilities.invokeLater(() -> merge(tagCategories.getUncategorizedTagsNode()));
+            lastSelectionParentsNodes = Collections.emptyList();
         }
 
         public void apply(String oldSeparator, String newSeparator) {
@@ -425,19 +358,17 @@ class TagCategoryEditor implements IExtension {
 
         @Override
         public void treeNodesRemoved(TreeModelEvent e) {
-            if(mergeIsRunning)
+            if(tagCategories.isMergeRunning())
                 return;
-            String parentQuallifiedTag = tagCategories.categorizedContent((DefaultMutableTreeNode) e.getTreePath().getLastPathComponent());
             Object[] removedNodes = e.getChildren();
             for(int i = 0; i < removedNodes.length; i++) {
 
-                final DefaultMutableTreeNode insertedNode = (DefaultMutableTreeNode) removedNodes[i];
-                final Tag removedTag = (Tag) insertedNode.getUserObject();
-                String removedQuallifiedTag;
-                if(parentQuallifiedTag.isEmpty())
-                    removedQuallifiedTag = removedTag.getContent();
-                else
-                    removedQuallifiedTag = parentQuallifiedTag + getTagCategorySeparator() + removedTag.getContent();
+                final DefaultMutableTreeNode removedNode = (DefaultMutableTreeNode) removedNodes[i];
+                final Tag removedTag = tagCategories.tagWithoutCategories(removedNode);
+                DefaultMutableTreeNode parent = (DefaultMutableTreeNode) e.getTreePath().getLastPathComponent();
+                String categorizedParentContent = tagCategories.categorizedContent(parent);
+                String removedQuallifiedTag = categorizedParentContent.isEmpty() ? removedTag.getContent()
+                        : categorizedParentContent + getTagCategorySeparator() + removedTag.getContent();
                 final int indexBefore = replacements.size() - lastSelectionParentsNodes.size() * 2;
                 if(indexBefore < 0 || lastSelectionParentsNodes.isEmpty() || ! replacements.get(indexBefore).equals(removedQuallifiedTag)) {
                     replacements.add(removedQuallifiedTag);
@@ -456,56 +387,21 @@ class TagCategoryEditor implements IExtension {
 
         private void merge(DefaultMutableTreeNode node) {
             boolean nodeWasSelected = tree.getLastSelectedPathComponent() == node;
-            boolean mergeWasRunning = mergeIsRunning;
-            mergeIsRunning = true;
-            try{
-                final DefaultMutableTreeNode parent = (DefaultMutableTreeNode) node.getParent();
-                final DefaultMutableTreeNode mergeParent = parent == tagCategories.getUncategorizedTagsNode()
-                ? tagCategories.getRootNode() : parent;
-                DefaultMutableTreeNode target = merge(node, null, mergeParent);
-                if(mergeParent.isRoot())
-                    merge(node, target, tagCategories.getUncategorizedTagsNode());
-                if(nodeWasSelected && node.getParent() == null)
-                    tree.setSelectionPath(new TreePath(target));
-            }
-            finally {
-                mergeIsRunning = mergeWasRunning;
-            }
+            DefaultMutableTreeNode target = tagCategories.merge(node);
+            if(nodeWasSelected && node.getParent() == null)
+                tree.setSelectionPath(new TreePath(target));
         }
 
-        private DefaultMutableTreeNode merge(DefaultMutableTreeNode node, DefaultMutableTreeNode target,
-                final DefaultMutableTreeNode parent) {
-            final DefaultTreeModel nodes = tagCategories.getNodes();
-            for (int i = 0; i < parent.getChildCount(); i++) {
-                final DefaultMutableTreeNode sibling = (DefaultMutableTreeNode) parent.getChildAt(i);
-                if (sibling.getUserObject().equals(node.getUserObject())) {
-                    if(target != null) {
-                        while(! sibling.isLeaf()) {
-                            final DefaultMutableTreeNode child = (DefaultMutableTreeNode) sibling.getFirstChild();
-                            nodes.removeNodeFromParent(child);
-                            nodes.insertNodeInto(child, target, target.getChildCount());
-                            merge(child);
-                        }
-                        nodes.removeNodeFromParent(sibling);
-                    }
-                    else
-                        target = sibling;
-                }
-            }
-            return target;
-        }
 
     }
     private static final String WINDOW_CONFIG_PROPERTY = "tag_category_editor_window_configuration";
-
-    private final String title;
 
     private final JDialog dialog;
 
     private final JColorButton colorButton;
     private final Action modifyColorAction;
 
-    private final JTree tree;
+    private final JTagTree tree;
 
     private final TagCategories tagCategories;
 
@@ -522,15 +418,22 @@ class TagCategoryEditor implements IExtension {
     private final TagRenamer tagRenamer;
 
 
+    private static JDialog createDialog(RootPaneContainer frame) {
+        return frame instanceof Frame ? new JDialog((Frame) frame, TextUtils.getText("tag_category_manager"), false)
+                : new JDialog((JDialog) frame, TextUtils.getText("tag_category_manager"), false);
+    }
+
     TagCategoryEditor(RootPaneContainer frame, MIconController iconController, MapModel map) {
+        this(createDialog(frame), iconController, map);
+    }
+
+    TagCategoryEditor(JDialog dialog, MIconController iconController, MapModel map) {
+        this.dialog = dialog;
         this.iconController = iconController;
         this.map = map;
         this.lastSelectionParentsNodes = Collections.emptyList();
-        title = TextUtils.getText("tag_category_manager");
         contentWasModified = false;
-        final boolean modal = false;
-        this.dialog = frame instanceof Frame ? new JDialog((Frame) frame, title, modal)
-                : new JDialog((JDialog) frame, title, modal);
+        lastTransferableId = "";
 
         final JButton okButton = new JButton();
         final JButton cancelButton = new JButton();
@@ -568,53 +471,13 @@ class TagCategoryEditor implements IExtension {
 
         final IconRegistry iconRegistry = map.getIconRegistry();
         this.tagCategories = iconRegistry.getTagCategories().copy();
-        tree = new JTree(tagCategories.getNodes()) {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public boolean isPathEditable(TreePath path) {
-                Object lastPathComponent = path.getLastPathComponent();
-                if (!(lastPathComponent instanceof DefaultMutableTreeNode))
-                    return false;
-                Object userObject = ((DefaultMutableTreeNode) lastPathComponent).getUserObject();
-                return userObject instanceof Tag;
-            }
-
-			@Override
-			public void setUI(TreeUI ui) {
-				super.setUI(ui);
-				Font tagFont = iconController.getTagFont(map.getRootNode());
-				final Font font = tagFont.deriveFont(getFont().getSize2D());
-                setFont(font);
-				Rectangle2D rect = font.getStringBounds("*" , 0, 1,
-		        		new FontRenderContext(new AffineTransform(), true, true));
-		        double textHeight = rect.getHeight();
-				setRowHeight((int)  Math.ceil(textHeight * 1.4));
-			}
-
-            @Override
-            public void cancelEditing() {
-                DefaultMutableTreeNode node = (DefaultMutableTreeNode) getEditingPath().getLastPathComponent();
-                Tag tag = (Tag) node.getUserObject();
-                super.cancelEditing();
-                if(tag.isEmpty() && node.isLeaf())
-                    tagCategories.removeNodeFromParent(node);
-            }
-
-
-
-        };
-        tree.setEditable(true);
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
-        tree.setInvokesStopCellEditing(true);
-        tree.setDragEnabled(true);
-        tree.setDropMode(DropMode.ON_OR_INSERT);
+        tree = new JTagTree(tagCategories, iconController.getTagFont(map.getRootNode()));
         tree.setTransferHandler(new TreeTransferHandler());
-        tree.setCellRenderer(new TagCellRenderer(tagCategories.getRootNode()));
-        tree.setCellEditor(new TagCellEditor());
-        tree.setToggleClickCount(0);
-
-        configureKeyBindings();
+        if(! GraphicsEnvironment.isHeadless()) {
+            tree.setEditable(true);
+            tree.setCellEditor(new TagCellEditor());
+            configureKeyBindings();
+        }
 
         JRestrictedSizeScrollPane editorScrollPane = createScrollPane();
         editorScrollPane.setViewportView(tree);
@@ -685,7 +548,7 @@ class TagCategoryEditor implements IExtension {
             @Override
             public void treeNodesInserted(TreeModelEvent e) {
                 contentWasModified = true;
-                SwingUtilities.invokeLater(() -> tree.expandPath(e.getTreePath()));
+                Invoker.invokeLater(() -> tree.expandPath(e.getTreePath()));
             }
 
             @Override
@@ -782,10 +645,7 @@ class TagCategoryEditor implements IExtension {
         AbstractAction cutNodeAction = new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                if(copyNodes()) {
-                    saveLastSelectionParentsNodes();
-                    removeNodes();
-                }
+                cutNodes();
             }
         };
         am.put(TransferHandler.getCutAction().getValue(Action.NAME), cutNodeAction);
@@ -794,7 +654,7 @@ class TagCategoryEditor implements IExtension {
         AbstractAction pasteNodeAction = new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                pasteNode();
+                pasteNodes();
             }
         };
         am.put(TransferHandler.getPasteAction().getValue(Action.NAME), pasteNodeAction);
@@ -869,26 +729,25 @@ class TagCategoryEditor implements IExtension {
     }
 
     private Stream<Tag> collectSelectedTags() {
-        final TreePath[] selectionPaths = getSelectionPaths();
+        final TreePath[] selectionPaths = tree.getSelectedTagPaths();
         if(selectionPaths == null)
             return Stream.empty();
         MapModel selectedMap = Controller.getCurrentController().getMap();
         if(selectedMap == null)
             return Stream.empty();
-        String mapSeparator = selectedMap.getIconRegistry().getTagCategories().getTagCategorySeparator();
         final Stream<Tag> selectedTags = Stream.of(selectionPaths)
                 .map(TreePath::getLastPathComponent)
                 .map(DefaultMutableTreeNode.class::cast)
-                .map(node -> new CategorizedTagForCategoryNode(node).categorizedTag(mapSeparator));
+                .map(node -> tagCategories.categorizedTag(node));
         return selectedTags;
     }
 
-    private void addNode(boolean asChild) {
+    void addNode(boolean asChild) {
         DefaultMutableTreeNode selectedNode = getSelectedNode();
         DefaultMutableTreeNode uncategorizedTagsNode = tagCategories.getUncategorizedTagsNode();
-        if(selectedNode == null || selectedNode == uncategorizedTagsNode && asChild || selectedNode.getParent() == uncategorizedTagsNode)
+        if(selectedNode == null || selectedNode == uncategorizedTagsNode || selectedNode.getParent() == uncategorizedTagsNode)
             selectedNode = tagCategories.getRootNode();
-        TreeNode[] nodes = (asChild || selectedNode.isRoot()) ? tagCategories.addChildNode(selectedNode) : tagCategories.addSiblingNode(selectedNode);
+        TreeNode[] nodes = (asChild || selectedNode.isRoot() || selectedNode == uncategorizedTagsNode) ? tagCategories.addChildNode(selectedNode) : tagCategories.addSiblingNode(selectedNode);
         if(nodes.length == 0)
             return;
         TreePath path = new TreePath(nodes);
@@ -899,7 +758,7 @@ class TagCategoryEditor implements IExtension {
 
     private void saveLastSelectionParentsNodes() {
         final TreePath[] selectionPaths = removeDescendantPaths(tree.getSelectionPaths());
-        if(selectionPaths == null || selectionPaths.length == 0) {
+        if(selectionPaths == null || selectionPaths.length == 0 || ! canSelectionBeRemoved()) {
             lastSelectionParentsNodes = Collections.emptyList();
         } else {
             final List<String> x = Stream.of(selectionPaths)
@@ -911,6 +770,14 @@ class TagCategoryEditor implements IExtension {
                 .collect(Collectors.toList());
             lastSelectionParentsNodes = x;
         }
+    }
+
+    private boolean canSelectionBeRemoved() {
+        TreePath[] selectionPaths = tree.getSelectionPaths();
+        return selectionPaths != null
+                && Stream.of(selectionPaths)
+                .map(TreePath::getLastPathComponent)
+                .allMatch(o-> tagCategories.containsTag((DefaultMutableTreeNode)o));
     }
 
     private TreePath[] removeDescendantPaths(TreePath[] paths) {
@@ -943,7 +810,7 @@ class TagCategoryEditor implements IExtension {
         return filteredPaths.toArray(new TreePath[0]);
     }
     private void removeNodes() {
-        final TreePath[] selectionPaths = getSelectionPaths();
+        final TreePath[] selectionPaths = tree.getSelectedTagPaths();
         if(selectionPaths == null)
             return;
         Stream.of(selectionPaths)
@@ -952,10 +819,18 @@ class TagCategoryEditor implements IExtension {
                 .forEach(tagCategories::removeNodeFromParent);
     }
 
-    private boolean copyNodes() {
-        TagCategorySelection t = ((TreeTransferHandler)tree.getTransferHandler()).createTransferable();
+
+    void cutNodes() {
+        if( canSelectionBeRemoved() && copyNodes()) {
+            saveLastSelectionParentsNodes();
+            removeNodes();
+        }
+    }
+
+    boolean copyNodes() {
+        Transferable t = createTransferable();
         if(t  != null) {
-            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            Clipboard clipboard = ClipboardAccessor.getSystemClipboard();
             clipboard.setContents(t, null);
             return true;
         }
@@ -963,8 +838,8 @@ class TagCategoryEditor implements IExtension {
     }
 
 
-    private void pasteNode() {
-        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+    void pasteNodes() {
+        Clipboard clipboard = ClipboardAccessor.getSystemClipboard();
         try {
             Transferable t = clipboard.getContents(null);
             if (t != null && t.isDataFlavorSupported(DataFlavor.stringFlavor)) {
@@ -972,7 +847,7 @@ class TagCategoryEditor implements IExtension {
                 final DefaultMutableTreeNode uncategorizedTagsNode = tagCategories.getUncategorizedTagsNode();
                 if(selectedNode != uncategorizedTagsNode && selectedNode.isNodeAncestor(uncategorizedTagsNode))
                     selectedNode = uncategorizedTagsNode;
-                insertTransferable(selectedNode, selectedNode.isRoot() ? selectedNode.getChildCount() - 1 : selectedNode.getChildCount(), t);
+                insertTransferable(selectedNode, selectedNode.isRoot() ? selectedNode.getChildCount() - 1 : selectedNode.getChildCount(), t, false);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -982,8 +857,6 @@ class TagCategoryEditor implements IExtension {
     private DataFlavor flavor(Transferable t) {
             if(t.isDataFlavorSupported(TagCategorySelection.tagCategoryFlavor))
                 return TagCategorySelection.tagCategoryFlavor;
-            if(t.isDataFlavorSupported(TagCategorySelection.tagFlavor))
-                return TagCategorySelection.tagFlavor;
             if(t.isDataFlavorSupported(TagCategorySelection.stringFlavor))
                 return TagCategorySelection.stringFlavor;
             throw new IllegalArgumentException("No supported flavor found");
@@ -991,31 +864,23 @@ class TagCategoryEditor implements IExtension {
     }
 
     private void modifyTagColor() {
-        Tag tag = getSelectedTag();
-        if (tag != null && !tag.isEmpty()) {
-            Color defaultColor = new Color(tag.getDefaultColor().getRGB(), true);
-            Color initialColor = tag.getColor();
-            final Color result = ColorTracker.showCommonJColorChooserDialog(tree, tag.getContent(),
+        Tag tag = tagCategories.tagWithoutCategories(getSelectedNode());
+        if (!tag.isEmpty()) {
+            Tag categorizedTag = tagCategories.categorizedTag(getSelectedNode());
+            Color defaultColor = new Color(categorizedTag.getDefaultColor().getRGB(), true);
+            Color initialColor = categorizedTag.getColor();
+            final Color result = ColorTracker.showCommonJColorChooserDialog(tree, categorizedTag.getContent(),
                     initialColor, defaultColor);
             if (result != null && !initialColor.equals(result) || result == defaultColor) {
-                tag.setColor(result);
-                tagCategories.setTagColor(tagCategories.categorizedContent(getSelectedNode()), result);
-                tagCategories.fireNodeChanged(getSelectedNode());
+                setTagColor(result);
                 updateColorButton();
             }
         }
     }
 
-    private Tag getSelectedTag() {
-        DefaultMutableTreeNode selectedNode = getSelectedNode();
-        if (selectedNode == null)
-            return null;
-
-        Object userObject = selectedNode.getUserObject();
-        if (!(userObject instanceof Tag))
-            return null;
-
-        return (Tag) userObject;
+    void setTagColor(final Color result) {
+        tagCategories.setTagColor(tagCategories.categorizedContent(getSelectedNode()), result);
+        tagCategories.fireNodeChanged(getSelectedNode());
     }
 
     private DefaultMutableTreeNode getSelectedNode() {
@@ -1071,79 +936,34 @@ class TagCategoryEditor implements IExtension {
     }
 
     private void updateColorButton() {
-        Tag tag = getSelectedTag();
-        if (tag == null || tag.isEmpty()) {
-            modifyColorAction.setEnabled(false);
-            colorButton.setColor(Tag.EMPTY_TAG.getColor());
-            return;
-        }
-        else {
-            modifyColorAction.setEnabled(true);
-            colorButton.setColor(tag.getColor());
-        }
+        Tag tag = tagCategories.tagWithoutCategories(getSelectedNode());
+        modifyColorAction.setEnabled(!tag.isEmpty());
+        colorButton.setColor(tag.getColor());
     }
 
-    private TreePath[] getSelectionPaths() {
-        TreePath[] paths = tree.getSelectionPaths();
-        if (paths == null || paths.length == 0) {
-            return null;
-        }
-
-        List<TreePath> filteredPaths = new ArrayList<>();
-
-        for (TreePath path : paths) {
-            DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-            if(node.getUserObject() instanceof Tag)
-                filteredPaths.add(path);
-            else
-                return null;
-        }
-
-        removeDescendants(filteredPaths);
-
-        if (filteredPaths.isEmpty()) {
-            return null;
-        }
-
-        return filteredPaths.toArray(new TreePath[0]);
-    }
-
-    private void removeDescendants(List<TreePath> filteredPaths) {
-        for (int i = 0; i < filteredPaths.size(); i++) {
-            TreePath path = filteredPaths.get(i);
-            for (int j = 0; j < filteredPaths.size(); j++) {
-                if (i != j) {
-                    TreePath otherPath = filteredPaths.get(j);
-                    if (otherPath.isDescendant(path)) {
-                        filteredPaths.remove(i);
-                        i--;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    private void insertTransferable(DefaultMutableTreeNode parent, int childIndex, Transferable t)
+    private void insertTransferable(DefaultMutableTreeNode parent, int childIndex, Transferable t, boolean isDropped)
             throws UnsupportedFlavorException, IOException {
         final DataFlavor flavor = flavor(t);
         String data = (String) t.getTransferData(flavor);
         if(flavor.equals(TagCategorySelection.tagCategoryFlavor)) {
-            boolean isMoveInternal = ! lastTransferableId.isEmpty() && data.startsWith(lastTransferableId);
-            if(isMoveInternal) {
+            boolean isMoveInternal = ! lastTransferableId.isEmpty()
+                && t.isDataFlavorSupported(TagSelection.uuidFlavor)
+                && lastTransferableId.equals(t.getTransferData(TagSelection.uuidFlavor));
+            if(isDropped && isMoveInternal) {
                 childIndex -= countSelectedChildrenAbove(parent, childIndex);
                 removeNodes();
             }
-            tagCategories.insert(parent, childIndex, data.substring(TRANSFERABLE_ID_LENGTH));
-            if(isMoveInternal && parent == tagCategories.getUncategorizedTagsNode())
-                tagRenamer.uncategorizedNodesMoved();
-        }
-        else
+            if(! isMoveInternal)
+                lastSelectionParentsNodes = Collections.emptyList();
             tagCategories.insert(parent, childIndex, data);
+        } else {
+            lastSelectionParentsNodes = Collections.emptyList();
+            tagCategories.insert(parent, childIndex, data);
+        }
     }
 
     private int countSelectedChildrenAbove(DefaultMutableTreeNode parent, int childIndex) {
-        final TreePath[] selectionPaths = getSelectionPaths();
+        final TreePath[] selectionPaths = tree.getSelectedTagPaths();
         if(selectionPaths != null) {
             int childIndexCopy = childIndex;
             long removedUpperSiblings = Stream.of(selectionPaths)
@@ -1161,4 +981,19 @@ class TagCategoryEditor implements IExtension {
     private String getTagCategorySeparator() {
         return tagCategories.getTagCategorySeparator();
     }
+
+    TagCategories getTagCategories() {
+        return tagCategories;
+    }
+
+    JTree getTree() {
+        return tree;
+    }
+
+	private Transferable createTransferable() {
+		TagCategorySelection transferable = tree.createTransferable();
+		if(transferable != null)
+		    lastTransferableId = transferable.getId();
+		return transferable;
+	}
 }

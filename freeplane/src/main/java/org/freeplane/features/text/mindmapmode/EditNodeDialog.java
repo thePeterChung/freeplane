@@ -19,6 +19,7 @@
  */
 package org.freeplane.features.text.mindmapmode;
 
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -42,7 +43,6 @@ import javax.swing.JEditorPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollPane;
-import javax.swing.RootPaneContainer;
 import javax.swing.SwingUtilities;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.JTextComponent;
@@ -50,6 +50,7 @@ import javax.swing.text.JTextComponent;
 import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.LabelAndMnemonicSetter;
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.util.Compat;
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.mode.Controller;
@@ -153,7 +154,7 @@ public class EditNodeDialog extends EditNodeBase {
 			});
 			textComponent.addMouseListener(new MouseListener() {
 				private void conditionallyShowPopup(final MouseEvent e) {
-					if (e.isPopupTrigger()) {
+					if (Compat.isPopupTrigger(e)) {
 						final JPopupMenu popupMenu = createPopupMenu(textComponent);
 						popupMenu.show(textComponent, e.getX(), e.getY());
 						e.consume();
@@ -247,10 +248,10 @@ public class EditNodeDialog extends EditNodeBase {
 	}
 
 	/** Private variable to hold the last value of the "Enter confirms" state. */
-	final private KeyEvent firstEvent;
+	final private AWTEvent firstEvent;
 	private String title;
 
-	public EditNodeDialog(NodeModel node, KeyEvent firstEvent, boolean editorBlocks,
+	public EditNodeDialog(NodeModel node, AWTEvent firstEvent, boolean editorBlocks,
 	        IEditControl editControl,
 	                      boolean enableSplit, JEditorPane textEditor) {
         super(node, textEditor.getText(), editorBlocks, editControl);

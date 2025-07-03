@@ -55,15 +55,15 @@ public class FreeplaneTooltip extends JToolTip {
 		catch (URISyntaxException e) {
 			// fall through
 		}
-		final TextualTooltipRendererFactory tooltipScrollPaneFactory = new TextualTooltipRendererFactory(graphicsConfiguration, contentType, baseUrl, tipText, getComponent(), tooltipSize, honorDisplayProperties);
+		final TextualTooltipRendererFactory tooltipScrollPaneFactory = new TextualTooltipRendererFactory(contentType, baseUrl, tipText, getComponent(), tooltipSize, honorDisplayProperties);
 		add(tooltipScrollPaneFactory.getTooltipRenderer());
 	}
 
 	private Dimension tooltipSize(GraphicsConfiguration graphicsConfiguration) {
 		final Rectangle screenBounds = graphicsConfiguration.getBounds();
-		final int screenHeigth = screenBounds.height - 80;
+		final int screenHeight = screenBounds.height - 80;
 		final int screenWidth = screenBounds.width - 80;
-		final int maximumHeight = Math.min(screenHeigth, getIntProperty("toolTipManager.max_tooltip_height"));
+		final int maximumHeight = Math.min(screenHeight, getIntProperty("toolTipManager.max_tooltip_height"));
 		int maximumWidth = Math.min(screenWidth, getIntProperty("toolTipManager.max_tooltip_width"));
 		final Dimension maximumSize = new Dimension(maximumWidth, maximumHeight);
 		return maximumSize;
@@ -79,10 +79,10 @@ public class FreeplaneTooltip extends JToolTip {
     }
 
 	@Override
-    public void layout() {
+    public void doLayout() {
 		final Component renderer = getComponent(0);
 		renderer.setSize(getSize());
-	    super.layout();
+	    super.doLayout();
     }
 
 	public void setBase(URL url) {

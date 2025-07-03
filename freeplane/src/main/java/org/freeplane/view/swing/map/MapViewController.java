@@ -29,7 +29,6 @@ import java.awt.Graphics2D;
 import java.awt.KeyboardFocusManager;
 import java.awt.Point;
 import java.awt.Rectangle;
-import java.awt.RenderingHints;
 import java.awt.Window;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
@@ -56,12 +55,13 @@ import javax.swing.SwingUtilities;
 import javax.swing.event.ListDataEvent;
 import javax.swing.event.ListDataListener;
 
+import org.freeplane.api.TextWritingDirection;
+import org.freeplane.core.awt.GraphicsHints;
 import org.freeplane.core.extension.Configurable;
 import org.freeplane.core.resources.IFreeplanePropertyListener;
 import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.components.JComboBoxFactory;
 import org.freeplane.core.ui.components.UITools;
-import org.freeplane.core.ui.svgicons.GraphicsHints;
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.map.IMapLifeCycleListener;
 import org.freeplane.features.map.IMapSelection;
@@ -77,7 +77,6 @@ import org.freeplane.features.styles.MapStyle;
 import org.freeplane.features.styles.MapViewLayout;
 import org.freeplane.features.ui.IMapViewChangeListener;
 import org.freeplane.features.ui.IMapViewManager;
-import org.freeplane.features.ui.ViewController;
 
 /**
  * Manages the list of MapViews. As this task is very complex, I exported it
@@ -140,8 +139,6 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 				}
 			}
 		}) ;
-		final String antialiasProperty = resourceController.getProperty(ViewController.RESOURCE_ANTIALIAS);
-		changeAntialias(antialiasProperty);
 		KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("focusedWindow",this::focusSelectedNode);
 	}
 
@@ -352,6 +349,7 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		}
 		map.removeMapChangeListener(mapView);
 		remove(mapView);
+		mapView.restoreRootNodeTemporarily();
 		mapView.getRoot().remove();
 		return true;
     }
@@ -384,25 +382,25 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 	}
 
 	@Override
-	public RenderedImage createImage(int dpi) {
+	public RenderedImage createImage(int dpi, int imageType) {
 		final MapView view = getMapView();
 		if (view == null) {
 			return null;
 		}
 		view.preparePrinting();
 		final Rectangle innerBounds = view.getInnerBounds();
-		return createImage(dpi, innerBounds);
+		return createImage(dpi, innerBounds, imageType);
 	}
 
 	@Override
-	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int dpi) {
+	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int dpi, int imageType) {
 		final MapView view = getMapView();
 		if (view == null) {
 			return null;
 		}
 		final NodeView placedNodeView = view.getNodeView(placedNode);
 		if (placedNodeView == null) {
-			return createImage(dpi);
+			return createImage(dpi, imageType);
 		}
 
 		view.preparePrinting();
@@ -419,18 +417,18 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		if(placedNodePosition == NodePosition.RIGHT){
 			printedGraphicsBounds.x -= distanceToMargin;
 		}
-		return createImage(dpi, printedGraphicsBounds);
+		return createImage(dpi, printedGraphicsBounds, imageType);
 	}
 
-	public RenderedImage createImage(int dpi, final Rectangle printedArea) {
+	public RenderedImage createImage(int dpi, final Rectangle printedArea, int imageType) {
 		final MapView view = getMapView();
 		view.preparePrinting();
-		final BufferedImage myImage = printToImage(dpi, view, printedArea);
+		final BufferedImage myImage = printToImage(dpi, view, printedArea, imageType);
 		view.endPrinting();
 		return myImage;
 	}
 
-	private BufferedImage printToImage(int dpi, final MapView view, final Rectangle innerBounds) {
+	private BufferedImage printToImage(int dpi, final MapView view, final Rectangle innerBounds, int imageType) {
 		double scaleFactor = (double) dpi / (double) (UITools.FONT_SCALE_FACTOR * 72);
 
 		double scaledWidth = innerBounds.width * scaleFactor;
@@ -442,7 +440,7 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		int imageWidth = (int) Math.ceil(scaledWidth);
         int imageHeight = (int) Math.ceil(scaledHeight);
 
-		final BufferedImage myImage = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_ARGB);
+		final BufferedImage myImage = new BufferedImage(imageWidth, imageHeight, imageType);
 		final Graphics2D g = (Graphics2D) myImage.getGraphics();
 		g.scale(scaleFactor, scaleFactor);
 		g.translate(-innerBounds.x, -innerBounds.y);
@@ -578,7 +576,7 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 	 * @see org.freeplane.core.frame.IMapViewController#getMapViewVector()
 	 */
 	@Override
-	public List<MapView> getMapViewVector() {
+	public List<MapView> getMapViews() {
 		return Collections.unmodifiableList(mapViewVector);
 	}
 
@@ -811,6 +809,19 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		}
 		return list;
 	}
+
+	@Override
+	public boolean containsView(MapModel map) {
+		if(selectedMapView != null && selectedMapView.getMap().equals(map))
+			return true;
+		for (final MapView view : mapViewVector) {
+			if (view.getMap().equals(map)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	@Override
 	public void afterViewChange(final Component oldMap, final Component pNewMap) {
 		Controller controller = Controller.getCurrentController();
@@ -837,7 +848,7 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 
 
 	@Override
-    public void afterViewCreated(Component oldView, Component newView) {
+    public void afterViewDisplayed(Component oldView, Component newView) {
 	    updateMapList();
     }
 
@@ -958,80 +969,11 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		});
 	}
 
-	private boolean antialiasAll = false;
-	private boolean antialiasEdges = false;
-	private boolean getAntialiasAll() {
-		return antialiasAll;
-	}
-
-	private boolean getAntialiasEdges() {
-		return antialiasEdges;
-	}
-
-	public void setAntialiasAll(final boolean antialiasAll) {
-		this.antialiasAll = antialiasAll;
-	}
-
-	public void setAntialiasEdges(final boolean antialiasEdges) {
-		this.antialiasEdges = antialiasEdges;
-	}
-
-	@Override
-	public Object setEdgesRenderingHint(final Graphics2D g) {
-		final Object renderingHint = g.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-		if (getAntialiasEdges()) {
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		}
-		else {
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-		}
-		return renderingHint;
-	}
-
-
-	@Override
-	public void setTextRenderingHint(final Graphics2D g) {
-		if (getAntialiasAll()) {
-			g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-		}
-		else {
-			g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
-		}
-	}
-	/**
-	 */
-	private void changeAntialias(final String command) {
-		if (command == null) {
-			return;
-		}
-		if (command.equals("antialias_none")) {
-			setAntialiasEdges(false);
-			setAntialiasAll(false);
-		}
-		if (command.equals("antialias_edges")) {
-			setAntialiasEdges(true);
-			setAntialiasAll(false);
-		}
-		if (command.equals("antialias_all")) {
-			setAntialiasEdges(true);
-			setAntialiasAll(true);
-		}
-		final Component mapView = getMapViewComponent();
-		if (mapView != null) {
-			mapView.repaint();
-		}
-	}
-
-
 	@Override
 	public void propertyChanged(final String propertyName, final String newValue, final String oldValue) {
 		if (propertyName.equals(ModeController.VIEW_MODE_PROPERTY)
 				|| propertyName.equals("workspaceTitle")) {
 			setFrameTitle();
-			return;
-		}
-		if (propertyName.equals(ViewController.RESOURCE_ANTIALIAS)) {
-			changeAntialias(newValue);
 			return;
 		}
 	}
@@ -1073,7 +1015,7 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 			} else {
 				frameTitle = (workspaceTitle.isEmpty() ? "" : workspaceTitle + " - ") + modeName;
 			}
-			controller.getViewController().setTitle(frameTitle);
+			controller.getViewController().setTitle(TextWritingDirection.LEFT_TO_RIGHT.isolatePathSeparators(frameTitle));
 		}
 		else {
 			controller.getViewController().setTitle("");
@@ -1089,12 +1031,6 @@ public class MapViewController implements IMapViewManager , IMapViewChangeListen
 		final List<Component> views = getViews(map);
 		for(Component view : views)
 			remove((MapView)view);
-	}
-
-	@Override
-	public void onQuitApplication() {
-		ResourceController.getResourceController().setProperty("antialiasEdges", (antialiasEdges ? "true" : "false"));
-		ResourceController.getResourceController().setProperty("antialiasAll", (antialiasAll ? "true" : "false"));
 	}
 
 	@Override

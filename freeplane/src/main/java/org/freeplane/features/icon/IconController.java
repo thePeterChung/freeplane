@@ -19,6 +19,8 @@
  */
 package org.freeplane.features.icon;
 
+import java.awt.Color;
+import java.awt.Component;
 import java.awt.Font;
 import java.util.Collection;
 import java.util.Collections;
@@ -26,42 +28,53 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
+import org.freeplane.api.HorizontalTextAlignment;
 import org.freeplane.api.LengthUnit;
 import org.freeplane.api.Quantity;
 import org.freeplane.core.extension.IExtension;
 import org.freeplane.core.io.ReadManager;
 import org.freeplane.core.io.WriteManager;
-import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.AFreeplaneAction;
 import org.freeplane.core.ui.components.TagIcon;
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.ui.components.html.CssRuleBuilder;
+import org.freeplane.core.util.HtmlUtils;
 import org.freeplane.features.filter.FilterController;
 import org.freeplane.features.filter.condition.ConditionFactory;
 import org.freeplane.features.icon.factory.IconStoreFactory;
+import org.freeplane.features.map.ITooltipProvider;
 import org.freeplane.features.map.MapController;
 import org.freeplane.features.map.MapModel;
 import org.freeplane.features.map.NodeModel;
+import org.freeplane.features.map.ITooltipProvider.TooltipTrigger;
 import org.freeplane.features.mode.CombinedPropertyChain;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.IPropertyHandler;
 import org.freeplane.features.mode.ModeController;
 import org.freeplane.features.nodestyle.NodeStyleController;
+import org.freeplane.features.nodestyle.NodeStyleModel;
 import org.freeplane.features.styles.IStyle;
 import org.freeplane.features.styles.LogicalStyleController;
 import org.freeplane.features.styles.LogicalStyleController.StyleOption;
+import org.freeplane.features.text.ShortenedTextModel;
+import org.freeplane.features.styles.MapStyle;
 import org.freeplane.features.styles.MapStyleModel;
 import org.freeplane.features.styles.StyleNode;
+import org.freeplane.view.swing.map.MapView;
+import org.freeplane.view.swing.map.TagLocation;
 
 /**
  * @author Dimitry Polivaev
  */
 public class IconController implements IExtension {
+    private static final Quantity<LengthUnit> DEFAULT_ICON_SIZE = new Quantity<LengthUnit>(12, LengthUnit.pt);
 
-	private static final Quantity<LengthUnit> DEFAULT_ICON_SIZE = new Quantity<LengthUnit>(12, LengthUnit.pt);
+    private static final int TAG_TOOLTIP = 5;
 
 	final private CombinedPropertyChain<Collection<NamedIcon>, NodeModel> iconHandlers;
+
+	private UIIcon tagsIcon;
 	public static IconController getController() {
 		final ModeController modeController = Controller.getCurrentModeController();
 		return getController(modeController);
@@ -78,8 +91,63 @@ public class IconController implements IExtension {
 
 	public void install(final ModeController modeController) {
 		modeController.addExtension(IconController.class, this);
+		registerStateIconProvider();
+		registerTooltipProvider();
 	}
+    private void registerStateIconProvider() {
+        addStateIconProvider(new IStateIconProvider() {
+            @Override
+            public UIIcon getStateIcon(NodeModel node) {
+                if (getTags(node).isEmpty()) {
+                    return null;
+                }
+                final MapStyle mapStyle = modeController.getExtension(MapStyle.class);
+                TagLocation tagLocation = mapStyle.tagLocation(node.getMap());
+                final boolean showIcon = tagLocation == TagLocation.NEVER
+                		|| ! MapView.showsTagsOnMinimizedNodes() && ShortenedTextModel.isShortened(node);
+                if(showIcon) {
+                    if (tagsIcon == null) {
+                        tagsIcon = IconStoreFactory.ICON_STORE.getUIIcon("tags.svg");
+                    }
+                    return tagsIcon;
+                }
+                else
+                    return null;
+            }
 
+            @Override
+            public boolean mustIncludeInIconRegistry() {
+                return true;
+            }
+        });
+    }
+    private void registerTooltipProvider() {
+        modeController.addToolTipProvider(TAG_TOOLTIP, new ITooltipProvider() {
+            @Override
+            public String getTooltip(ModeController modeController, NodeModel node, Component view, TooltipTrigger tooltipTrigger) {
+                List<Tag> tags = getTags(node);
+                if (tags.isEmpty()) {
+                    return null;
+                }
+                final MapStyle mapStyle = modeController.getExtension(MapStyle.class);
+                TagLocation tagLocation = mapStyle.tagLocation(node.getMap());
+                final boolean showTooltip = tooltipTrigger == TooltipTrigger.LINK ||  tagLocation == TagLocation.NEVER
+                		|| ! MapView.showsTagsOnMinimizedNodes() && ShortenedTextModel.isShortened(node);
+                if(! showTooltip)
+                    return null;
+                final Font font = getTagFont(node);
+                final StringBuilder tooltip = new StringBuilder();
+                tooltip.append("<html><body><p style=\"");
+                tooltip.append( new CssRuleBuilder().withHTMLFont(font));
+                tooltip.append(" \">");
+                tooltip.append(tags.stream().map(Tag::getContent)
+                        .map(HtmlUtils::toXMLEscapedText)
+                        .collect(Collectors.joining("] [", "[", "]")));
+                tooltip.append("</p></body></html>");
+                return tooltip.toString();
+            }
+        });
+    }
 	final private Collection<IStateIconProvider> stateIconProviders;
 
 	final private List<IconMouseListener> iconMouseListeners;
@@ -202,31 +270,60 @@ public class IconController implements IExtension {
         return Collections.emptyMap();
     }
     public List<TagIcon> getTagIcons(NodeModel node) {
-        boolean showCategories = ResourceController.getResourceController().getBooleanProperty("showCategories");
+        final MapStyle mapStyle = modeController.getExtension(MapStyle.class);
+        boolean showCategories = mapStyle.showsTagCategories(node.getMap());
         return getTagIcons(node, showCategories);
 
     }
     public List<TagIcon> getTagIcons(NodeModel node, boolean showCategories) {
         final Font font = getTagFont(node);
+        Color tagBackgroundColor = getTagBackgroundColor(node);
+        Color tagTextColor = getTagTextColor(node);
         final TagCategories tagCategories = node.getMap().getIconRegistry().getTagCategories();
         final String tagCategorySeparator = tagCategories.getTagCategorySeparator();
-        Stream<Tag> tags = showCategories ? getCategorizedTags(node).stream()
-                .map(tag -> tag.categorizedTag(tagCategorySeparator))
-                : getTags(node).stream();
-        return tags
-                .map(tag -> showCategories ? tag : tag.removeInternalCategories(tagCategorySeparator))
-                .map(tag -> new TagIcon(tag, font))
+        return getTags(node).stream()
+                .map(tag -> tagIcon(tag, font, tagTextColor, tagBackgroundColor, showCategories, tagCategorySeparator))
                 .collect(Collectors.toList());
     }
+	private TagIcon tagIcon(Tag tag, final Font font, Color tagTextColor, Color tagBackgroundColor, boolean showCategories, String tagCategorySeparator) {
+		if (showCategories)
+			return new TagIcon(tag, font, tagTextColor, tagBackgroundColor);
+		else {
+			Tag tagWithoutCategories = tag.withoutCategories(tagCategorySeparator);
+			tagWithoutCategories.setAlternativeTag(tag);
+			TagIcon tagIcon = new TagIcon(tagWithoutCategories, font, tagTextColor, tagBackgroundColor);
+			return tagIcon;
+		}
+	}
 
     public Font getTagFont(NodeModel node) {
         final MapStyleModel model = MapStyleModel.getExtension(node.getMap());
-        final NodeModel attributeStyleNode = model.getStyleNodeSafe(MapStyleModel.TAG_STYLE);
+        final NodeModel tagStyleNode = model.getStyleNodeSafe(MapStyleModel.TAG_STYLE);
         final NodeStyleController style = modeController.getExtension(NodeStyleController.class);
-        Font nodeFont = style.getFont(attributeStyleNode, StyleOption.FOR_UNSELECTED_NODE);
+        Font nodeFont = style.getFont(tagStyleNode, StyleOption.FOR_UNSELECTED_NODE);
         final Font font = nodeFont.deriveFont(UITools.FONT_SCALE_FACTOR * nodeFont.getSize2D());
         return font;
     }
+
+    public Color getTagBackgroundColor(NodeModel node) {
+        final MapStyleModel model = MapStyleModel.getExtension(node.getMap());
+        final NodeModel tagStyleNode = model.getStyleNodeSafe(MapStyleModel.TAG_STYLE);
+        return NodeStyleModel.getBackgroundColor(tagStyleNode);
+     }
+
+    public Color getTagTextColor(NodeModel node) {
+        final MapStyleModel model = MapStyleModel.getExtension(node.getMap());
+        final NodeModel tagStyleNode = model.getStyleNodeSafe(MapStyleModel.TAG_STYLE);
+        return NodeStyleModel.getColor(tagStyleNode);
+     }
+
+    public HorizontalTextAlignment getTagComponentAlignment(NodeModel node) {
+        final MapStyleModel model = MapStyleModel.getExtension(node.getMap());
+        final NodeModel tagStyleNode = model.getStyleNodeSafe(MapStyleModel.TAG_STYLE);
+        final NodeStyleController style = modeController.getExtension(NodeStyleController.class);
+        return style.getHorizontalTextAlignment(tagStyleNode, StyleOption.FOR_UNSELECTED_NODE);
+     }
+
     public List<TagReference> getTagReferences(NodeModel node) {
         return Tags.getTagReferences(node);
     }
@@ -236,19 +333,12 @@ public class IconController implements IExtension {
         return tags == null ? Collections.emptyList() : tags.getTags();
     }
 
-    public List<CategorizedTag> getCategorizedTags(NodeModel node){
-        return getCategorizedTags(getTags(node), node.getMap().getIconRegistry().getTagCategories());
+    public List<Tag> getTagsWithExtendedCategories(NodeModel node){
+        return extendCategories(getTags(node), node.getMap().getIconRegistry().getTagCategories());
     }
 
     @SuppressWarnings("unused")
-    public List<CategorizedTag> getCategorizedTags(List<Tag> tags, TagCategories tagCategories){
+    public List<Tag> extendCategories(List<Tag> tags, TagCategories tagCategories){
         return Collections.emptyList();
-    }
-
-    public List<Tag> getTagsWithCategories(NodeModel node) {
-        return getCategorizedTags(node)
-        .stream()
-        .map(tag -> tag.categorizedTag(node.getMap().getIconRegistry().getTagCategories().getTagCategorySeparator()))
-        .collect(Collectors.toList());
     }
 }

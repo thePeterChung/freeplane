@@ -5,11 +5,9 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.RenderingHints;
 import java.awt.Stroke;
 
 import org.freeplane.core.ui.components.UITools;
-import org.freeplane.features.mode.ModeController;
 import org.freeplane.features.nodestyle.NodeGeometryModel;
 
 abstract class ShapedPainter extends MainViewPainter {
@@ -46,14 +44,11 @@ abstract class ShapedPainter extends MainViewPainter {
 		if (nodeView.getNode() == null) {
 			return;
 		}
-		final ModeController modeController = mainView.getNodeView().getMap().getModeController();
-		final Object renderingHint = modeController.getController().getMapViewManager().setEdgesRenderingHint(g);
 		mainView.paintBackgound(g);
 		mainView.paintDragOver(g);
 		if(mainView.getBorderColor().getAlpha() != 0) {
 			paintNodeShapeConfiguringGraphics(g);
 		}
-		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, renderingHint);
 		super.paintComponent(g);
 	}
 

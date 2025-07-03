@@ -20,9 +20,14 @@
 package org.freeplane.features.styles;
 
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.GraphicsEnvironment;
+import java.awt.event.HierarchyEvent;
+import java.awt.event.HierarchyListener;
 import java.io.File;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -35,8 +40,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Vector;
+import java.util.WeakHashMap;
 
-import javax.swing.JFileChooser;
+import org.freeplane.api.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
@@ -73,11 +79,16 @@ import org.freeplane.features.mode.ModeController;
 import org.freeplane.features.mode.NodeHookDescriptor;
 import org.freeplane.features.mode.PersistentNodeHook;
 import org.freeplane.features.styles.ConditionalStyleModel.Item;
+import org.freeplane.features.ui.IMapViewChangeListener;
+import org.freeplane.features.ui.IMapViewManager;
 import org.freeplane.features.url.UrlManager;
 import org.freeplane.features.url.mindmapmode.MFileManager;
 import org.freeplane.features.url.mindmapmode.TemplateManager;
 import org.freeplane.n3.nanoxml.XMLElement;
 import org.freeplane.view.swing.features.filepreview.MindMapPreviewWithOptions;
+import org.freeplane.view.swing.map.IconLocation;
+import org.freeplane.view.swing.map.MapView;
+import org.freeplane.view.swing.map.NodeView;
 import org.freeplane.view.swing.map.TagLocation;
 
 /**
@@ -90,8 +101,13 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
     private static final String TAG_CATEGORY_SEPARATOR_ATTRIBUTE = "category_separator";
 
     private static final String TAGS_ELEMENT = "tags";
-    public static final String ALLOW_COMPACT_LAYOUT = "allow_compact_layout";
+    public static final String ALLOW_COMPACT_LAYOUT_PROPERTY = "allow_compact_layout";
+    public static final String AUTO_COMPACT_LAYOUT_PROPERTY = "auto_compact_layout";
+    public static final String SHOW_TAG_CATEGORIES_PROPERTY = "showTagCategories";
+
     public static final String SHOW_TAGS_PROPERTY = "show_tags";
+    public static final String SHOW_ICONS_PROPERTY = "show_icons";
+
 	private static final String NODE_CONDITIONAL_STYLES = "NodeConditionalStyles";
 	public static final String RESOURCES_BACKGROUND_COLOR = "standardbackgroundcolor";
 	public static final String RESOURCES_BACKGROUND_IMAGE = "backgroundImageURI";
@@ -100,7 +116,40 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
 	public static final String FIT_TO_VIEWPORT = "fit_to_viewport";
 
 	private static final ThreadLocal<Boolean> followedStyleUpdateActive = ThreadLocal.withInitial(() -> Boolean.FALSE);
+	private static final WeakHashMap<MapModel, String> updatedFollowedMaps = new WeakHashMap<MapModel, String>();
 
+	static {
+		if(! GraphicsEnvironment.isHeadless()) {
+			IMapViewManager mapViewManager = Controller.getCurrentController().getMapViewManager();
+			mapViewManager.addMapViewChangeListener(new IMapViewChangeListener() {
+				@Override
+				public void afterViewChange(Component oldView, Component newView) {
+					if(! (newView instanceof MapView))
+						return;
+					MapView mapView = (MapView)newView;
+					MapModel newMap = mapView.getMap();
+					String followedMapPath = updatedFollowedMaps.remove(newMap);
+					if(followedMapPath == null)
+						return;
+                    String message = TextUtils.format("stylesUpdated", newMap.getTitle(), followedMapPath);
+                    NodeView root = mapView.getRoot();
+					if(root.isShowing())
+                    	UITools.showMessage(message, JOptionPane.INFORMATION_MESSAGE);
+                    else
+                    	root.addHierarchyListener(new HierarchyListener() {
+							@Override
+							public void hierarchyChanged(HierarchyEvent e) {
+								if(root.isShowing()) {
+									root.removeHierarchyListener(this);
+									SwingUtilities.invokeLater(() ->
+										UITools.showMessage(message, JOptionPane.INFORMATION_MESSAGE));
+								}
+							}
+						});
+				}
+			});
+		}
+	}
 	public static void install(boolean persistent){
 		new MapStyle(persistent);
 	}
@@ -272,6 +321,10 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
 		            properties.put(key, valueAsString);
 		        }
 		    }
+		    if(! properties.containsKey(SHOW_ICONS_PROPERTY)) {
+		        final boolean showsIcons = ResourceController.getResourceController().getBooleanProperty(SHOW_ICONS_PROPERTY);
+		        properties.put(SHOW_ICONS_PROPERTY, showsIcons ? IconLocation.BESIDE_NODES.name() : IconLocation.HIDE.name());
+		    }
 		}
 
 		private void loadTagProperties(IconRegistry iconRegistry, XMLElement xml) {
@@ -416,12 +469,19 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
 	}
 
 	public boolean allowsCompactLayout(MapModel map) {
-		return getBooleanProperty(map, ALLOW_COMPACT_LAYOUT);
+		return getBooleanProperty(map, ALLOW_COMPACT_LAYOUT_PROPERTY);
 	}
 
+	public boolean isAutoCompactLayoutEnabled(MapModel map) {
+		return getBooleanProperty(map, AUTO_COMPACT_LAYOUT_PROPERTY);
+	}
 
     public TagLocation tagLocation(MapModel map) {
         return MapStyleModel.getExtension(map).getEnumProperty(SHOW_TAGS_PROPERTY, TagLocation.UNDER_NODES);
+    }
+
+    public IconLocation iconLocation(MapModel map) {
+        return MapStyleModel.getExtension(map).getEnumProperty(SHOW_ICONS_PROPERTY, IconLocation.BESIDE_NODES);
     }
 
 
@@ -689,7 +749,7 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
 		final URL url = uri.toURL();
         loadStyleMapContainer(url).ifPresent(styleMapContainer ->
             {
-				new StyleExchange(styleMapContainer, targetMap).copyMapStyles();
+				new StyleExchange(styleMapContainer, targetMap).copyMapStyles(true);
 				updateFollowProperties(targetMap, uri, shouldFollow, shouldAssociate);
 			});
 	}
@@ -725,8 +785,14 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
                 if(shouldUpdate) {
                     loadStyleMapContainer(source.toURL()).ifPresent(styleMapContainer ->
                     {
-                        new StyleExchange(styleMapContainer, targetMap).copyMapStylesNoUndoNoRefresh();
-                        UITools.showMessage(TextUtils.format("stylesUpdated", targetMap.getTitle(), followedMapPath), JOptionPane.INFORMATION_MESSAGE);
+                        new StyleExchange(styleMapContainer, targetMap).copyMapStylesNoUndoNoRefresh(false);
+                        try {
+							Controller.getCurrentController().getViewController().invokeAndWait(
+							    () -> updatedFollowedMaps.put(targetMap, followedMapPath));
+						} catch (InvocationTargetException | InterruptedException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
                         SwingUtilities.invokeLater(() -> targetMap.setSaved(false));
                     });
                 }
@@ -941,6 +1007,10 @@ public class MapStyle extends PersistentNodeHook implements IExtension, IMapLife
         LogicalStyleController.getController().refreshMapLaterUndoable(map);
         if(copyToExternalTemplate)
             undoableCopyStyleToAssociatedExternalTemplate(map, style);
+    }
+
+    public boolean showsTagCategories(MapModel map) {
+        return getBooleanProperty(map, SHOW_TAG_CATEGORIES_PROPERTY);
     }
 
 }

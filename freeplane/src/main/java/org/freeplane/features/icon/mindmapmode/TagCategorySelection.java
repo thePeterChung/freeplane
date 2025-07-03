@@ -14,12 +14,14 @@ import java.util.stream.Stream;
 public class TagCategorySelection implements Transferable {
 
     public static final DataFlavor tagCategoryFlavor = new DataFlavor("application/x-freeplane-tag-category; class=java.lang.String", "Freeplane Tag Categories");
-    public static final DataFlavor tagFlavor = TagSelection.tagFlavor;
     public static final DataFlavor stringFlavor = DataFlavor.stringFlavor;
+    private static final DataFlavor tagFlavor = TagSelection.tagFlavor;
+    private static final DataFlavor uuidFlavor = TagSelection.uuidFlavor;
 
     private static final DataFlavor[] flavors = {
             tagCategoryFlavor,
             tagFlavor,
+            uuidFlavor,
             stringFlavor
         };
     private final String id;
@@ -46,10 +48,14 @@ public class TagCategorySelection implements Transferable {
             IOException {
         if(flavor.equals(tagFlavor))
             return tagSelection;
-        else if(flavor.equals(tagCategoryFlavor))
-            return id + System.lineSeparator() + tagCategorySelection;
+        else if(flavor.equals(uuidFlavor))
+            return id;
         else
             return tagCategorySelection;
     }
+
+	public String getId() {
+		return id;
+	}
 
 }

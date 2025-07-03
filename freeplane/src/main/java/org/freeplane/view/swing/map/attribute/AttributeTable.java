@@ -19,6 +19,7 @@
  */
 package org.freeplane.view.swing.map.attribute;
 
+import java.awt.AWTEvent;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -32,12 +33,16 @@ import java.awt.event.ActionEvent;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
 import java.awt.event.InputEvent;
+import java.awt.event.InputMethodEvent;
+import java.awt.event.InputMethodListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.awt.im.InputMethodRequests;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Arrays;
 import java.util.EventObject;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -56,7 +61,6 @@ import javax.swing.Icon;
 import javax.swing.InputMap;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
-import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -83,8 +87,10 @@ import javax.swing.table.TableModel;
 import org.freeplane.api.LengthUnit;
 import org.freeplane.api.TextWritingDirection;
 import org.freeplane.core.resources.ResourceController;
+import org.freeplane.core.ui.ActionAcceleratorManager;
 import org.freeplane.core.ui.components.TypedListCellRenderer;
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.util.Compat;
 import org.freeplane.core.util.Hyperlink;
 import org.freeplane.features.attribute.AttributeController;
 import org.freeplane.features.attribute.AttributeRegistry;
@@ -98,6 +104,7 @@ import org.freeplane.features.format.IFormattedObject;
 import org.freeplane.features.format.PatternFormat;
 import org.freeplane.features.link.LinkController;
 import org.freeplane.features.map.NodeModel;
+import org.freeplane.features.map.mindmapmode.DeleteAction;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.ModeController;
 import org.freeplane.features.nodestyle.NodeStyleController;
@@ -111,6 +118,7 @@ import org.freeplane.features.text.mindmapmode.MTextController;
 import org.freeplane.features.ui.ViewController;
 import org.freeplane.view.swing.map.FreeplaneTooltip;
 import org.freeplane.view.swing.map.MapView;
+import org.freeplane.view.swing.map.InputMethodBuffer;
 import org.freeplane.view.swing.map.NodeTooltipManager;
 import org.freeplane.view.swing.map.NodeView;
 
@@ -119,6 +127,7 @@ import org.freeplane.view.swing.map.NodeView;
  * @author Dimitry Polivaev
  */
 class AttributeTable extends JTable implements IColumnWidthChangeListener {
+	private static final String ATTRIBUTE_TABLE_EDIT_EVENT = "AttributeTable.EditEvent";
 	private static final String EDITING_STOPPED = AttributeTable.class.getName() + ".editingStopped";
 	private static int CLICK_COUNT_TO_START = 2;
 
@@ -130,6 +139,13 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 			final int selectedColumn = table.getSelectedColumn();
 			if(selectedColumn >= 0 && selectedRow >= 0)
 				table.editCellAt(selectedRow, selectedColumn, e);
+		}
+	}
+	private static final class DeleteSelectedCellsAction extends AbstractAction {
+		@Override
+		public void actionPerformed(ActionEvent e) {
+			AttributeTable table = (AttributeTable) e.getSource();
+			table.removeSelectedRows();
 		}
 	}
 	private static final class TableHeaderRendererImpl implements TableCellRenderer {
@@ -193,7 +209,7 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 	static private AttributeTableCellRenderer dtcr = new AttributeTableCellRenderer();
 	private static final int EXTRA_HEIGHT = 4;
 	static private CursorUpdater cursorUpdater = new CursorUpdater();
-	private static final int MAX_HEIGTH = 600;
+	private static final int MAX_HEIGHT = 600;
 	private static final long serialVersionUID = 1L;
 	private static final int CURSOR_WIDTH = 2;
 	public static AttributeTable getSelectedTable(){
@@ -209,6 +225,19 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 
 	final private AttributeView attributeView;
 	private int highRowIndex = 0;
+	private static final InputMethodListener tableInputMethodListener = new InputMethodListener() {
+
+		@Override
+		public void inputMethodTextChanged(InputMethodEvent event) {
+			if(event.getCommittedCharacterCount() > 0) {
+				AttributeTable table = (AttributeTable) event.getSource();
+				table.editCell(event);
+			}
+		}
+
+		@Override
+		public void caretPositionChanged(InputMethodEvent event) {/**/}
+	};
 	private static DefaultCellEditor dce;
 
 	private static final Set<String> editingActions = Stream.of((String)TransferHandler.getCopyAction().getValue(Action.NAME),
@@ -231,8 +260,10 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 		setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
 		getTableHeader().setReorderingAllowed(false);
 		setCellSelectionEnabled(true);
+		addInputMethodListener(tableInputMethodListener);
 		getSelectionModel().setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 		putClientProperty("JTable.autoStartsEdit", Boolean.FALSE);
+		enableInputMethods(true);
 		adaptActionMap(this);
 		setShowGrid(true);
 	}
@@ -244,6 +275,9 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 		InputMap focusedComponentInputMap = table.getInputMap(JTable.WHEN_FOCUSED);
 		final Object editKey = ancestorInputMap.get(f2);
 		focusedComponentInputMap.put(enter, editKey);
+		ActionAcceleratorManager acceleratorManager = ResourceController.getResourceController().getAcceleratorManager();
+		KeyStroke delete = acceleratorManager.getAccelerator(DeleteAction.NAME);
+		focusedComponentInputMap.put(delete, "deleteSelectedRows");
 		final ActionMap actionMap = table.getActionMap();
 		if(defaultParentActionMap == null || defaultParentActionMap != actionMap.getParent()) {
 			defaultParentActionMap = actionMap.getParent();
@@ -259,8 +293,9 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 
 			};
 			newDefaultParentActionMap.setParent(defaultParentActionMap);
-			EditCellAction action = new EditCellAction();
-			newDefaultParentActionMap.put(editKey, action);
+			newDefaultParentActionMap.put(ancestorInputMap.get(f2), new EditCellAction());
+			newDefaultParentActionMap.put("deleteSelectedRows", new DeleteSelectedCellsAction());
+
 		}
 		actionMap.setParent(newDefaultParentActionMap);
 	}
@@ -275,6 +310,11 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 	}
 
 
+
+	@Override
+	public InputMethodRequests getInputMethodRequests() {
+		return new InputMethodBuffer(this);
+	}
 
 	@Override
     public void addNotify() {
@@ -377,7 +417,7 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 				}
              }
 		}
-		putClientProperty("AttributeTable.EditEvent", e);
+		putClientProperty(ATTRIBUTE_TABLE_EDIT_EVENT, e);
 		try{
 			if(super.editCellAt(row, column, e)){
 				final TableCellEditor cellEditor = getCellEditor();
@@ -396,7 +436,7 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 			return false;
 		}
 		finally{
-			putClientProperty("AttributeTable.EditEvent", null);
+			putClientProperty(ATTRIBUTE_TABLE_EDIT_EVENT, null);
 		}
     }
 
@@ -422,6 +462,13 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 							keyEvent.getModifiers(), KeyEvent.VK_UNDEFINED, keyChar, KeyEvent.KEY_LOCATION_UNKNOWN);
 					SwingUtilities.processKeyBindings(keyTypedEvent);
 				}
+			}
+			else if(e instanceof InputMethodEvent) {
+				InputMethodEvent ime = (InputMethodEvent) e;
+				final Component editorComponent = editor.getEditorComponent();
+				InputMethodEvent dispatchedEvent = new InputMethodEvent(editorComponent, ime.getID(), ime.getWhen(), ime.getText(),
+						ime.getCommittedCharacterCount(), ime.getCaret(), ime.getVisiblePosition());
+				editorComponent.dispatchEvent(dispatchedEvent);
 			}
 		}
 		else {
@@ -511,7 +558,7 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 
 	@Override
 	public TableCellEditor getCellEditor(final int row, final int col) {
-		return getCellEditor(row, col, (EventObject) getClientProperty("AttributeTable.EditEvent"));
+		return getCellEditor(row, col, (EventObject) getClientProperty(ATTRIBUTE_TABLE_EDIT_EVENT));
 	}
 
 	private boolean isCellEditable(EventObject anEvent) {
@@ -528,7 +575,7 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 		final String valueForEdit = getValueForEdit(row, col);
 		if(col == 1){
 			final MTextController textController = (MTextController) TextController.getController(getModeController());
-			textController.getEventQueue().setFirstEvent((e instanceof KeyEvent) ? ((KeyEvent) e) : null);
+			textController.getEventQueue().setFirstEvent((e instanceof MouseEvent) ? null : (AWTEvent) e);
 			final AttributeTableModel model = (AttributeTableModel) getModel();
 			final DialogTableCellEditor dialogTableCellEditor = new DialogTableCellEditor();
 			EditNodeBase base = textController.createContentSpecificEditor(model.getNode(), valueForEdit,model.getNodeAttributeModel(), dialogTableCellEditor.getEditControl(), false);
@@ -577,7 +624,9 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 			    }
 
 			};
-			comboBox.setRenderer(new TypedListCellRenderer());
+			TypedListCellRenderer editorValueRenderer = new TypedListCellRenderer();
+			editorValueRenderer.setCanRenderHeader(false);
+            comboBox.setRenderer(editorValueRenderer);
 			Component editorComponent = comboBox.getEditor().getEditorComponent();
 			if(editorComponent instanceof JTextField) {
 			    TextUI textFieldUI = new BasicTextFieldUI();
@@ -622,11 +671,11 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 			final ModeController modeController = map.getModeController();
 			final NodeStyleController nsc = NodeStyleController.getController(modeController);
 			dimension.width = Math.min(map.getZoomed(nsc.getMaxWidth(nodeView.getNode(), nodeView.getStyleOption()).toBaseUnits()), dimension.width);
-			dimension.height = Math.min(map.getZoomed(AttributeTable.MAX_HEIGTH) - getTableHeaderHeight(), dimension.height);
+			dimension.height = Math.min(map.getZoomed(AttributeTable.MAX_HEIGHT) - getTableHeaderHeight(), dimension.height);
 		}
 		else{
 //			dimension.width = Math.min(MAX_WIDTH, dimension.width);
-//			dimension.height = Math.min(MAX_HEIGTH, dimension.height);
+//			dimension.height = Math.min(MAX_HEIGHT, dimension.height);
 		}
 		return dimension;
 	}
@@ -825,14 +874,18 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 		        && e != null && e.getID() == KeyEvent.KEY_PRESSED && !e.isActionKey()
 		        && e.getKeyChar() != KeyEvent.CHAR_UNDEFINED
 		        && 0 == (e.getModifiers() & (InputEvent.CTRL_MASK | InputEvent.META_MASK))) {
-			final int leadRow = getSelectionModel().getLeadSelectionIndex();
-			final int leadColumn = getColumnModel().getSelectionModel().getLeadSelectionIndex();
-			if (leadRow == -1 || leadColumn == -1  || isEditing() || !editCellAt(leadRow, leadColumn, e)) {
-					return false;
-			}
-			return true;
+			return editCell(e);
 		}
 		return false;
+	}
+
+	private boolean editCell(final AWTEvent e) {
+		final int leadRow = getSelectionModel().getLeadSelectionIndex();
+		final int leadColumn = getColumnModel().getSelectionModel().getLeadSelectionIndex();
+		if (leadRow == -1 || leadColumn == -1  || isEditing() || !editCellAt(leadRow, leadColumn, e))
+			return false;
+		else
+			return true;
 	}
 
 	@Override
@@ -850,19 +903,34 @@ class AttributeTable extends JTable implements IColumnWidthChangeListener {
 			requestFocusInWindow();
 	}
 
-	/**
-	 */
 	public void removeRow(final int row) {
 		if (getModel() instanceof ExtendedAttributeTableModelDecorator) {
+			((ExtendedAttributeTableModelDecorator) getModel()).removeRow(row);
+			selectNextToRemoved(row);
+		}
+	}
+
+	public void removeSelectedRows() {
+		if (getModel() instanceof ExtendedAttributeTableModelDecorator) {
 			final ExtendedAttributeTableModelDecorator model = (ExtendedAttributeTableModelDecorator) getModel();
-			model.removeRow(row);
-			final int rowCount = getRowCount();
-			if (row <= rowCount - 1) {
-				changeSelection(row, getSelectedColumn(), false, false);
-			}
-			else if (rowCount >= 1) {
-				changeSelection(row - 1, getSelectedColumn(), false, false);
-			}
+			final int[] selectedRows = getSelectedRows();
+			if(selectedRows.length == 0)
+				return;
+			Arrays.sort(selectedRows);
+			int lastRow = selectedRows[selectedRows.length - 1];
+			for(int i = selectedRows.length - 1; i >= 0; i--)
+				model.removeRow(selectedRows[i]);
+			selectNextToRemoved(lastRow);
+		}
+	}
+
+	private void selectNextToRemoved(int lastRow) {
+		final int rowCount = getRowCount();
+		if (lastRow <= rowCount - 1) {
+			changeSelection(lastRow, getSelectedColumn(), false, false);
+		}
+		else if (rowCount >= 1) {
+			changeSelection(lastRow - 1, getSelectedColumn(), false, false);
 		}
 	}
 

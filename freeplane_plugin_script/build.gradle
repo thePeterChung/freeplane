@@ -1,7 +1,7 @@
 dependencies {
     implementation project(':freeplane')
     implementation project(':freeplane_plugin_jsyntaxpane')
-	lib ('org.apache.groovy:groovy-all:4.0.21') {
+	lib ('org.apache.groovy:groovy-all:4.0.27') {
 		exclude group:'org.codehaus.groovy', module:'groovy-test'
 		exclude group:'org.codehaus.groovy', module:'groovy-test-junit5'
 		exclude group:'org.codehaus.groovy', module:'groovy-testng'
@@ -11,8 +11,8 @@ dependencies {
 		exclude group:'org.codehaus.groovy', module:'groovy-cli-commons'
 		exclude group:'org.codehaus.groovy', module:'groovy-cli-picocli'
 	}
-	lib 'org.apache.groovy:groovy-dateutil:4.0.21'
-	lib 'org.apache.ivy:ivy:2.5.2'
+	lib 'org.apache.groovy:groovy-dateutil:4.0.27'
+	lib 'org.apache.ivy:ivy:2.5.3'
 
 }
 
@@ -47,16 +47,18 @@ javadoc {
       .include('**/Proxy.java')
       .include('**/Convertible.java')
       .include('**/FreeplaneScriptBaseClass.java')
-      .include('**/ScriptUtils.java') +
+      .include('**/ScriptUtils.java')
+      .include('**/GroovyStaticImports.java') +
 		fileTree(dir: '../freeplane_api/src/main/java')
 		  .include('**/api/*.java') +
 		fileTree(dir: '../freeplane/src/main/java')
 		  .include('**/UITools.java')
 		  .include('**/TextUtils.java')
-		  .include('**/FreeplaneVersion.java')
+          .include('**/FreeplaneVersion.java')
 		  .include('**/HtmlUtils.java')
 		  .include('**/LogUtils.java')
-		  .include('**/MenuUtils.java') + fileTree(dir: '../freeplane_framework/src/main/java')
+		  .include('**/MenuUtils.java') +
+	    fileTree(dir: '../freeplane_framework/src/main/java')
 		  .include('**/Launcher.java')
 
 

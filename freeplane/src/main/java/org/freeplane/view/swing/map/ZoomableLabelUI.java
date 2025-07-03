@@ -53,15 +53,17 @@ public class ZoomableLabelUI extends BasicLabelUI {
 	private Rectangle iconR = new Rectangle();
 	private Rectangle textR = new Rectangle();
 	private Rectangle viewR = new Rectangle();
-	private LayoutData layoutData = new LayoutData(iconR, textR);
+	private LayoutData layoutData = new LayoutData(viewR, textR, iconR);
 
 	public static class LayoutData{
+		final public Rectangle viewR;
 		final public Rectangle iconR;
 		final public Rectangle textR;
-		public LayoutData(Rectangle iconR, Rectangle textR) {
+		public LayoutData(Rectangle viewR, Rectangle textR, Rectangle iconR) {
 			super();
-			this.iconR = iconR;
+			this.viewR = viewR;
 			this.textR = textR;
+			this.iconR = iconR;
 		}
 
 	}
@@ -95,23 +97,40 @@ public class ZoomableLabelUI extends BasicLabelUI {
 
 	@Override
 	protected String layoutCL(final JLabel label, final FontMetrics fontMetrics, final String text, final Icon icon,
-	                          final Rectangle viewR, final Rectangle iconR, final Rectangle textR) {
+			final Rectangle viewR, final Rectangle iconR, final Rectangle textR) {
+		LayoutData preferredLayoutData = (LayoutData) label.getClientProperty("preferredLayoutData");
+		if(preferredLayoutData != null) {
+			viewR.x = preferredLayoutData.viewR.x;
+			viewR.y = preferredLayoutData.viewR.y;
+			viewR.width = preferredLayoutData.viewR.width;
+			viewR.height = preferredLayoutData.viewR.height;
+			textR.x = preferredLayoutData.textR.x;
+			textR.y = preferredLayoutData.textR.y;
+			textR.width = preferredLayoutData.textR.width;
+			textR.height = preferredLayoutData.textR.height;
+			iconR.x = preferredLayoutData.iconR.x;
+			iconR.y = preferredLayoutData.iconR.y;
+			iconR.width = preferredLayoutData.iconR.width;
+			iconR.height = preferredLayoutData.iconR.height;
+			return text;
+		}
 		final ZoomableLabel zLabel = (ZoomableLabel) label;
 		final float zoom = zLabel.getZoom();
+		final float scale = zoom == 1f ? 1f : zoom * 0.99f;
 		if (isPainting) {
 			final Insets insets = zLabel.getInsets();
 			final int width = zLabel.getWidth();
 			final int height = zLabel.getHeight();
 			viewR.x = insets.left;
 			viewR.y = insets.top;
-			viewR.width = (int) (width  / zoom) - (insets.left + insets.right);
-			viewR.height = (int)(height / zoom) - (insets.top + insets.bottom);
+			viewR.width = (int) (width  / scale) - (insets.left + insets.right);
+			viewR.height = (int)(height / scale) - (insets.top + insets.bottom);
 			if(viewR.width < 0)
 				viewR.width = 0;
 		}
 		else {
 			if(zLabel.getMaximumWidth() != Integer.MAX_VALUE){
-				final int maximumWidth = (int) (zLabel.getMaximumWidth() / zoom);
+				final int maximumWidth = (int) (zLabel.getMaximumWidth() / scale);
 				final Insets insets = label.getInsets();
 				viewR.width = maximumWidth - insets.left - insets.right;
 				if(viewR.width < 0)
@@ -119,7 +138,7 @@ public class ZoomableLabelUI extends BasicLabelUI {
 				ScaledHTML.Renderer v = (ScaledHTML.Renderer) label.getClientProperty(BasicHTML.propertyKey);
 				if (v != null) {
 					int availableTextWidth = viewR.width;
-					if(icon != null)
+					if(icon != null && label.getVerticalTextPosition() != SwingConstants.BOTTOM)
 						availableTextWidth -= icon.getIconWidth() + label.getIconTextGap();
 					float minimumWidth = v.getMinimumSpan(View.X_AXIS);
 					if(minimumWidth > availableTextWidth){
@@ -132,7 +151,7 @@ public class ZoomableLabelUI extends BasicLabelUI {
 
 						if(viewPreferredWidth > availableTextWidth){
 							v.setWidth(availableTextWidth);
-							super.layoutCL(zLabel, zLabel.getFontMetrics(), text, icon, viewR, iconR, textR);
+							layoutCompoundLabel(text, icon, viewR, iconR, textR, zLabel);
 							return text;
 						}
 						else if(currentWidth != viewPreferredWidth)
@@ -144,174 +163,130 @@ public class ZoomableLabelUI extends BasicLabelUI {
 		Icon textRenderingIcon = zLabel.getTextRenderingIcon();
 		if(textRenderingIcon != null){
 			layoutLabelWithTextIcon(textRenderingIcon, icon, viewR, iconR, textR, zLabel);
+		} else
+            layoutCompoundLabel(text, icon, viewR, iconR, textR, zLabel);
+
+		if(! isPainting)
+			return text;
+
+		int reservedIconWidth = iconR.width == 0 ? 0 : iconR.width + label.getIconTextGap();
+		int availableTextWidth = viewR.width;
+		if(iconR.width > 0 && label.getVerticalTextPosition() != SwingConstants.BOTTOM) {
+			availableTextWidth -= reservedIconWidth;
 		}
-		else
-			super.layoutCL(zLabel, zLabel.getFontMetrics(), text, icon, viewR, iconR, textR);
+		ScaledHTML.Renderer v = (ScaledHTML.Renderer) label.getClientProperty(BasicHTML.propertyKey);
+		if (v != null) {
+			if (textR.width < availableTextWidth) {
+				textR.width = availableTextWidth;
+				v.setWidth(availableTextWidth);
+			}
+		}
+
+		switch(label.getVerticalTextPosition()) {
+		case SwingConstants.BOTTOM: {
+			iconR.x = viewR.x;
+			iconR.y = viewR.y;
+			textR.x = viewR.x;
+			textR.y = iconR.height == 0 ? viewR.y : viewR.y + iconR.height + label.getIconTextGap();
+			int extraTopMargin = (viewR.height - (textR.y + textR.height - viewR.y))/2;
+			iconR.y += extraTopMargin;
+			textR.y += extraTopMargin;
+			int horizontalAlignment = zLabel.getEffectiveHorizontalAlignment();
+			switch (horizontalAlignment) {
+			case SwingConstants.CENTER:
+				iconR.x += (viewR.width - iconR.width)/2;
+				textR.x += (viewR.width - textR.width)/2;
+				break;
+			case SwingConstants.RIGHT:
+				iconR.x += viewR.width - iconR.width;
+				textR.x += viewR.width - textR.width;
+				break;
+			}
+			break;
+		}
+		default: {
+			switch(label.getVerticalTextPosition()) {
+			case SwingConstants.TOP:
+				iconR.y = textR.y = viewR.y + (viewR.height - Math.max(textR.height, iconR.height))/2;
+				break;
+			case SwingConstants.CENTER:
+				iconR.y = viewR.y + (viewR.height - iconR.height) / 2;
+				textR.y = viewR.y + (viewR.height - textR.height) / 2;
+				break;
+			}
+			int effectiveHorizontalTextPosition = zLabel.getEffectiveHorizontalTextPosition();
+			iconR.x = effectiveHorizontalTextPosition == SwingConstants.RIGHT ? viewR.x : viewR.x + viewR.width - iconR.width;
+			textR.x = effectiveHorizontalTextPosition == SwingConstants.LEFT || iconR.width == 0 ? viewR.x : iconR.x + iconR.width + label.getIconTextGap();
+			int horizontalAlignment = zLabel.getEffectiveHorizontalAlignment();
+			switch (horizontalAlignment) {
+			case SwingConstants.CENTER:
+				textR.x += (availableTextWidth - textR.width)/2;
+				break;
+			case SwingConstants.RIGHT:
+				textR.x += availableTextWidth - textR.width;
+				break;
+			}
+			break;
+		}}
 		return text;
 	}
+
+    private void layoutCompoundLabel(final String text, final Icon icon, final Rectangle viewR,
+            final Rectangle iconR, final Rectangle textR, final ZoomableLabel zLabel) {
+        int verticalTextPosition = zLabel.getVerticalTextPosition();
+        SwingUtilities.layoutCompoundLabel(
+        (JComponent) zLabel,
+        zLabel.getFontMetrics(),
+        text,
+        icon,
+        zLabel.getVerticalAlignment(),
+        zLabel.getHorizontalAlignment(),
+        verticalTextPosition,
+        verticalTextPosition != SwingConstants.BOTTOM ? SwingConstants.TRAILING : SwingConstants.CENTER,
+        viewR,
+        iconR,
+        textR,
+        zLabel.getIconTextGap());
+    }
 
 	static private void layoutLabelWithTextIcon(final Icon textRenderingIcon, final Icon icon,
 			final Rectangle viewR, final Rectangle iconR,
 			final Rectangle textR, final ZoomableLabel zLabel) {
-		JComponent c = zLabel;
-		int horizontalAlignment = zLabel.getHorizontalAlignment();
-		int horizontalTextPosition = zLabel.getHorizontalTextPosition();
-		boolean orientationIsLeftToRight = true;
-		int     hAlign = horizontalAlignment;
-		int     hTextPos = horizontalTextPosition;
-
-		if (c != null) {
-		    if (!(c.getComponentOrientation().isLeftToRight())) {
-		        orientationIsLeftToRight = false;
-		    }
-		}
-
-		// Translate LEADING/TRAILING values in horizontalAlignment
-		// to LEFT/RIGHT values depending on the components orientation
-		switch (horizontalAlignment) {
-		case SwingUtilities.LEADING:
-		    hAlign = (orientationIsLeftToRight) ? SwingUtilities.LEFT : SwingUtilities.RIGHT;
-		    break;
-		case SwingUtilities.TRAILING:
-		    hAlign = (orientationIsLeftToRight) ? SwingUtilities.RIGHT : SwingUtilities.LEFT;
-		    break;
-		}
-
-		// Translate LEADING/TRAILING values in horizontalTextPosition
-		// to LEFT/RIGHT values depending on the components orientation
-		switch (horizontalTextPosition) {
-		case SwingUtilities.LEADING:
-		    hTextPos = (orientationIsLeftToRight) ? SwingUtilities.LEFT : SwingUtilities.RIGHT;
-		    break;
-		case SwingUtilities.TRAILING:
-		    hTextPos = (orientationIsLeftToRight) ? SwingUtilities.RIGHT : SwingUtilities.LEFT;
-		    break;
-		}
-		int verticalAlignment = zLabel.getVerticalAlignment();
 		int verticalTextPosition = zLabel.getVerticalTextPosition();
 		if (icon != null) {
-		        iconR.width = icon.getIconWidth();
-		        iconR.height = icon.getIconHeight();
-		    }
-		    else {
-		        iconR.width = iconR.height = 0;
-		    }
-
-		    /* Initialize the text bounds rectangle textR.  If a null
-		     * or and empty String was specified we substitute "" here
-		     * and use 0,0,0,0 for textR.
-		     */
-
-		    int lsb = 0;
-		    int rsb = 0;
-		    /* Unless both text and icon are non-null, we effectively ignore
-		     * the value of textIconGap.
-		     */
-		    int gap;
-
-		        int availTextWidth;
-		        gap = (icon == null) ? 0 : zLabel.getIconTextGap();
-
-		        if (hTextPos == SwingUtilities.CENTER) {
-		            availTextWidth = viewR.width;
-		        }
-		        else {
-		            availTextWidth = viewR.width - (iconR.width + gap);
-		        }
-			textR.width = Math.min(availTextWidth, textRenderingIcon.getIconWidth());
-			textR.height = textRenderingIcon.getIconHeight();
-
-
-		    /* Compute textR.x,y given the verticalTextPosition and
-		     * horizontalTextPosition properties
-		     */
-
-		    if (verticalTextPosition == SwingUtilities.TOP) {
-		        if (hTextPos != SwingUtilities.CENTER) {
-		            textR.y = 0;
-		        }
-		        else {
-		            textR.y = -(textR.height + gap);
-		        }
-		    }
-		    else if (verticalTextPosition == SwingUtilities.CENTER) {
-		        textR.y = (iconR.height / 2) - (textR.height / 2);
-		    }
-		    else { // (verticalTextPosition == BOTTOM)
-		        if (hTextPos != SwingUtilities.CENTER) {
-		            textR.y = iconR.height - textR.height;
-		        }
-		        else {
-		            textR.y = (iconR.height + gap);
-		        }
-		    }
-
-		    if (hTextPos == SwingUtilities.LEFT) {
-		        textR.x = -(textR.width + gap);
-		    }
-		    else if (hTextPos == SwingUtilities.CENTER) {
-		        textR.x = (iconR.width / 2) - (textR.width / 2);
-		    }
-		    else { // (horizontalTextPosition == RIGHT)
-		        textR.x = (iconR.width + gap);
-		    }
-
-		    /* labelR is the rectangle that contains iconR and textR.
-		     * Move it to its proper position given the labelAlignment
-		     * properties.
-		     *
-		     * To avoid actually allocating a Rectangle, Rectangle.union
-		     * has been inlined below.
-		     */
-		    int labelR_x = Math.min(iconR.x, textR.x);
-		    int labelR_width = Math.max(iconR.x + iconR.width,
-		                                textR.x + textR.width) - labelR_x;
-		    int labelR_y = Math.min(iconR.y, textR.y);
-		    int labelR_height = Math.max(iconR.y + iconR.height,
-		                                 textR.y + textR.height) - labelR_y;
-
-		    int dx, dy;
-
-		    if (verticalAlignment == SwingUtilities.TOP) {
-		        dy = viewR.y - labelR_y;
-		    }
-		    else if (verticalAlignment == SwingUtilities.CENTER) {
-		        dy = (viewR.y + (viewR.height / 2)) - (labelR_y + (labelR_height / 2));
-		    }
-		    else { // (verticalAlignment == BOTTOM)
-		        dy = (viewR.y + viewR.height) - (labelR_y + labelR_height);
-		    }
-
-		    if (hAlign == SwingUtilities.LEFT) {
-		        dx = viewR.x - labelR_x;
-		    }
-		    else if (hAlign == SwingUtilities.RIGHT) {
-		        dx = (viewR.x + viewR.width) - (labelR_x + labelR_width);
-		    }
-		    else { // (horizontalAlignment == CENTER)
-		        dx = (viewR.x + (viewR.width / 2)) -
-		             (labelR_x + (labelR_width / 2));
-		    }
-
-		    /* Translate textR and glypyR by dx,dy.
-		     */
-
-		    textR.x += dx;
-		    textR.y += dy;
-
-		    iconR.x += dx;
-		    iconR.y += dy;
-
-		    if (lsb < 0) {
-		        // lsb is negative. Shift the x location so that the text is
-		        // visually drawn at the right location.
-		        textR.x -= lsb;
-
-		        textR.width += lsb;
-		    }
-		    if (rsb > 0) {
-		        textR.width -= rsb;
-		    }
+			iconR.width = icon.getIconWidth();
+			iconR.height = icon.getIconHeight();
+		}
+		else {
+			iconR.width = iconR.height = 0;
+			textR.x = viewR.x;
+			textR.y = viewR.y;
+		}
+		/* Unless both text and icon are non-null, we effectively ignore
+		 * the value of textIconGap.
+		 */
+		int gap = iconR.width == 0 ? 0 : zLabel.getIconTextGap();
+		int availTextWidth;
+		if (verticalTextPosition == SwingConstants.BOTTOM) {
+			availTextWidth = viewR.width;
+		}
+		else {
+			availTextWidth = viewR.width - (iconR.width + gap);
+		}
+		textR.width = Math.min(availTextWidth, textRenderingIcon.getIconWidth());
+		textR.height = textRenderingIcon.getIconHeight();
+		if(iconR.width != 0) {
+			if (verticalTextPosition == SwingConstants.BOTTOM) {
+				iconR.x = textR.x = viewR.x;
+				iconR.y = viewR.y;
+				textR.y = iconR.y + iconR.height + gap;
+			}
+			else {
+				iconR.y = textR.y = viewR.y;
+				iconR.x = viewR.x;
+				textR.x = iconR.x + iconR.width + gap;
+			}
+		}
 	}
 
 	@Override
@@ -345,20 +320,20 @@ public class ZoomableLabelUI extends BasicLabelUI {
 		try {
 			isPainting = true;
 			if(htmlViewSet){
-			    ScaledHTML.resetPainter();
+				ScaledHTML.resetPainter();
 			}
 			superPaintSafe(g, mainView);
 		}
 		finally {
 			isPainting = false;
 			if(htmlViewSet){
-			    ScaledHTML.resetPainter();
+				ScaledHTML.resetPainter();
 			}
 		}
 		g2.setTransform(transform);
 		if (oldRenderingHintFM != newRenderingHintFM) {
 			g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, oldRenderingHintFM != null ? oldRenderingHintFM
-			        : RenderingHints.VALUE_FRACTIONALMETRICS_DEFAULT);
+					: RenderingHints.VALUE_FRACTIONALMETRICS_DEFAULT);
 		}
 	}
 
@@ -384,107 +359,142 @@ public class ZoomableLabelUI extends BasicLabelUI {
 	}
 
 	private void paintIcon(Graphics g, ZoomableLabel label) {
-        Icon icon = (label.isEnabled()) ? label.getIcon() : label.getDisabledIcon();
+		Icon icon = (label.isEnabled()) ? label.getIcon() : label.getDisabledIcon();
 
-        if ((icon == null)) {
-            return;
-        }
-        FontMetrics fm = label.getFontMetrics(g.getFont());
-        String text = label.getText();
-        Rectangle paintViewR = new Rectangle();
-        Rectangle paintIconR = new Rectangle();
+		if ((icon == null)) {
+			return;
+		}
+		FontMetrics fm = label.getFontMetrics(g.getFont());
+		String text = label.getText();
+		Rectangle paintViewR = new Rectangle();
+		Rectangle paintIconR = new Rectangle();
 		Rectangle paintTextR = new Rectangle();
 		layoutCL(label, fm, text, icon, paintViewR, paintIconR, paintTextR);
 
-        if (icon != null) {
-            icon.paintIcon(label, g, paintIconR.x, paintIconR.y);
-        }
+		if (icon != null) {
+			icon.paintIcon(label, g, paintIconR.x, paintIconR.y);
+		}
 	}
 
 	private void paintIcons(Graphics g, ZoomableLabel label, Icon textRenderingIcon) {
-        Icon icon = (label.isEnabled()) ? label.getIcon() : label.getDisabledIcon();
-        Rectangle paintViewR = new Rectangle();
-        Rectangle paintIconR = new Rectangle();
+		Icon icon = (label.isEnabled()) ? label.getIcon() : label.getDisabledIcon();
+		Rectangle paintViewR = new Rectangle();
+		Rectangle paintIconR = new Rectangle();
 		Rectangle paintTextR = new Rectangle();
 		layoutCL(label, null, null, icon, paintViewR, paintIconR, paintTextR);
-        if (icon != null) {
-            icon.paintIcon(label, g, paintIconR.x, paintIconR.y);
-        }
-        textRenderingIcon.paintIcon(label, g, paintTextR.x, paintTextR.y);
+		if (icon != null) {
+			icon.paintIcon(label, g, paintIconR.x, paintIconR.y);
+		}
+		textRenderingIcon.paintIcon(label, g, paintTextR.x, paintTextR.y);
 	}
 
 	@Override
 	public void propertyChange(PropertyChangeEvent e) {
-	    ZoomableLabel lbl = ((ZoomableLabel) e.getSource());
-	    String propertyName = e.getPropertyName();
-	    if (propertyName == "text" || "font" == propertyName || "foreground" == propertyName
-	            || ("ancestor" == propertyName || "graphicsConfiguration" == propertyName) && e.getNewValue() != null
-	            || ZoomableLabel.CUSTOM_CSS == propertyName)
-            updateRendererOnPropertyChange(lbl, propertyName);
-        else {
-	        super.propertyChange(e);
-	        View view = (View) lbl.getClientProperty(BasicHTML.propertyKey);
-	        if (view != null && ! (view instanceof ScaledHTML.Renderer))
-	            updateRendererOnPropertyChange(lbl, propertyName);
-	    }
+		ZoomableLabel lbl = ((ZoomableLabel) e.getSource());
+		String propertyName = e.getPropertyName();
+		if (propertyName == "text" || "font" == propertyName || "foreground" == propertyName
+				|| "horizontalAlignment" == propertyName
+				|| ("ancestor" == propertyName || "graphicsConfiguration" == propertyName) && e.getNewValue() != null
+				|| ZoomableLabel.CUSTOM_CSS == propertyName)
+			updateRendererOnPropertyChange(lbl, propertyName);
+		else {
+			super.propertyChange(e);
+			View view = (View) lbl.getClientProperty(BasicHTML.propertyKey);
+			if (view != null && ! (view instanceof ScaledHTML.Renderer))
+				updateRendererOnPropertyChange(lbl, propertyName);
+		}
 	}
 
-    private void updateRendererOnPropertyChange(ZoomableLabel lbl, String propertyName) {
-        if(lbl.getTextRenderingIcon() !=  null){
-            ScaledHTML.updateRenderer(lbl, "");
-        }
-        else{
-            ScaledHTML.updateRendererOnPropertyChange(lbl, propertyName);
-        }
-    }
+	private void updateRendererOnPropertyChange(ZoomableLabel lbl, String propertyName) {
+		if(lbl.getTextRenderingIcon() !=  null){
+			ScaledHTML.updateRenderer(lbl, "");
+		}
+		else{
+			ScaledHTML.updateRendererOnPropertyChange(lbl, propertyName);
+		}
+	}
 
 	@Override
-    protected void installComponents(JLabel c) {
-	    ScaledHTML.updateRenderer(c, c.getText());
-        c.setInheritsPopupMenu(true);
-    }
+	protected void installComponents(JLabel c) {
+		ScaledHTML.updateRenderer(c, c.getText());
+		c.setInheritsPopupMenu(true);
+	}
 
 	public Rectangle getIconR(ZoomableLabel label) {
-		layout(label);
-    	return iconR;
-    }
+		layoutZoomed(label);
+		return iconR;
+	}
 
 	public Rectangle getTextR(ZoomableLabel label) {
-		layout(label);
-    	return textR;
-    }
+		layoutZoomed(label);
+		return textR;
+	}
 
-	public LayoutData getLayoutData(ZoomableLabel label) {
-		layout(label);
-    	return layoutData;
-    }
+	public Rectangle getAvailableTextR(ZoomableLabel label) {
+		layoutZoomed(label);
+		int availableTextWidth = viewR.width;
+		if(iconR.width > 0 && label.getVerticalTextPosition() != SwingConstants.BOTTOM)
+			availableTextWidth -= iconR.width + label.getIconTextGap();
+		if(availableTextWidth == textR.width)
+			return textR;
+		Rectangle availableTextR = new Rectangle(textR);
+		int horizontalAlignment = label.getEffectiveHorizontalAlignment();
+		switch (horizontalAlignment) {
+		case SwingConstants.CENTER:
+			availableTextR.x -= (availableTextWidth - textR.width)/2;
+			break;
+		case SwingConstants.RIGHT:
+			availableTextR.x -= availableTextWidth - textR.width;
+			break;
+		}
+		availableTextR.width = availableTextWidth;
+		return availableTextR;
+	}
 
-	private void layout(ZoomableLabel label) {
-		String text = label.getText();
-		Icon icon = (label.isEnabled()) ? label.getIcon() :
-			label.getDisabledIcon();
+	private void layoutZoomed(ZoomableLabel label) {
+		layoutIgnoringZoom(label);
+		final float zoom = label.getZoom();
+		if(zoom != 1f) {
+			viewR.x = (int)(iconR.x * zoom);
+			viewR.y = (int)(iconR.y * zoom);
+			viewR.width = (int)(viewR.width * zoom);
+			viewR.height = (int)(viewR.height * zoom);
+			iconR.x = (int)(iconR.x * zoom);
+			iconR.y = (int)(iconR.y * zoom);
+			iconR.width = (int)(iconR.width * zoom);
+			iconR.height = (int)(iconR.height * zoom);
+			textR.x = (int)(textR.x * zoom);
+			textR.y = (int)(textR.y * zoom);
+			textR.width = (int)(textR.width * zoom);
+			textR.height = (int)(textR.height * zoom);
+		}
+	}
+
+	void layoutIgnoringZoom(ZoomableLabel label) {
 		boolean wasPainting = isPainting;
 		try{
 			isPainting = true;
 			iconR.x = iconR.y = iconR.width = iconR.height = 0;
 			textR.x = textR.y = textR.width = textR.height = 0;
+			String text = label.getText();
+			Icon icon = (label.isEnabled()) ? label.getIcon() :
+				label.getDisabledIcon();
 			layoutCL(label, label.getFontMetrics(), text, icon, viewR, iconR,textR);
-			final float zoom = label.getZoom();
-			if(zoom != 1f) {
-			    iconR.x = (int)(iconR.x * zoom);
-			    iconR.y = (int)(iconR.y * zoom);
-			    iconR.width = (int)(iconR.width * zoom);
-			    iconR.height = (int)(iconR.height * zoom);
-			    textR.x = (int)(textR.x * zoom);
-			    textR.y = (int)(textR.y * zoom);
-			    textR.width = (int)(textR.width * zoom);
-			    textR.height = (int)(textR.height * zoom);
-			}
 		}
 		finally{
 			isPainting = wasPainting;
 		}
 	}
 
+	public void preserveLayout(ZoomableLabel zoomableLabel) {
+		layoutIgnoringZoom(zoomableLabel);
+		zoomableLabel.putClientProperty("preferredLayoutData", new LayoutData(new Rectangle(viewR),
+				new Rectangle(textR),
+				new Rectangle(iconR)));
+	}
+
+	public void releaseLayout(ZoomableLabel zoomableLabel) {
+		zoomableLabel.putClientProperty("preferredLayoutData", null);
+	}
 
 }

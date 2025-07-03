@@ -17,6 +17,7 @@ import org.freeplane.view.swing.map.MainView;
 import org.freeplane.view.swing.map.MapView;
 import org.freeplane.view.swing.map.NodeView;
 import org.freeplane.view.swing.ui.DefaultNodeMouseWheelListener;
+import org.freeplane.view.swing.ui.MouseEventActor;
 
 public class MNodeMouseWheelListener extends DefaultNodeMouseWheelListener {
 
@@ -34,10 +35,11 @@ public class MNodeMouseWheelListener extends DefaultNodeMouseWheelListener {
 		final MapView map = (MapView) SwingUtilities.getAncestorOfClass(MapView.class, view);
 		if(map.usesLayoutSpecificMaxNodeWidth())
 			return;
-		final int wheelRotation = e.getWheelRotation();
+		final double wheelRotation = e.getPreciseWheelRotation();
 		final NodeView nodeView = view.getNodeView();
 		if(! nodeView.isSelected())
-			map.selectAsTheOnlyOneSelected(nodeView);
+			MouseEventActor.INSTANCE.withMouseEvent( () ->
+				map.selectAsTheOnlyOneSelected(nodeView));
 
 		final double factor = e.isControlDown() ? 1 : 6 * LengthUnit.pt.factor();
 		double newZoomedWidth =  Math.max((view.getWidth() - wheelRotation * factor) / map.getZoom(), 0);

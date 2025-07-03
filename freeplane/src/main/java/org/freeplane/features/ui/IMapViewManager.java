@@ -23,7 +23,6 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.image.RenderedImage;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -73,9 +72,9 @@ public interface IMapViewManager {
 
 	public String createHtmlMap();
 
-	public RenderedImage createImage(int dpi);
+	public RenderedImage createImage(int dpi, int imageType);
 
-	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int imageResolutionInDpi);
+	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int imageResolutionInDpi, int imageType);
 
 	public Color getBackgroundColor(NodeModel node);
 
@@ -100,7 +99,7 @@ public interface IMapViewManager {
 
 	public Configurable getMapViewConfiguration();
 
-	public List<? extends Component> getMapViewVector();
+	public List<? extends Component> getMapViews();
 
 	public ModeController getModeController(Component newMap);
 
@@ -136,14 +135,12 @@ public interface IMapViewManager {
 
 	public Map<String, MapModel> getMaps(String modename);
 
+	public boolean containsView(MapModel map);
 	public List<Component> getViews(MapModel map);
 	public void obtainFocusForSelected();
 	public void setMapTitles();
-	public Object setEdgesRenderingHint(final Graphics2D g);
-	public void setTextRenderingHint(final Graphics2D g);
-	public JComboBox createZoomBox();
 
-	public void onQuitApplication();
+	public JComboBox createZoomBox();
 
 	public void closeWithoutSaving();
 

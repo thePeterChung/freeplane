@@ -28,37 +28,45 @@ import java.util.List;
 import java.util.Objects;
 
 import javax.swing.Icon;
-import javax.swing.JComponent;
+import javax.swing.SwingConstants;
 
 import org.freeplane.api.LengthUnit;
 import org.freeplane.api.Quantity;
 import org.freeplane.features.icon.IconController;
 import org.freeplane.features.icon.NamedIcon;
-import org.freeplane.features.icon.Tag;
 import org.freeplane.features.icon.factory.IconFactory;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.styles.LogicalStyleController.StyleOption;
 
 public class MultipleImageIcon implements Icon {
-    final private int TAG_GAP = new Quantity(2, LengthUnit.pt).toBaseUnitsRounded();
-	final private List<Icon> mIcons = new ArrayList<>();
+    private static final int UNKNOWN = -1;
+    final private IconRow iconRow = new IconRow();
 	final private List<NamedIcon> mUIIcons = new ArrayList<>();
 	final private List<TagIcon> mTags = new ArrayList<>();
+	private int horizontalAlignment = SwingConstants.LEFT;
 
 	public MultipleImageIcon() {
+	}
+
+	public int getHorizontalAlignment() {
+		return horizontalAlignment;
+	}
+
+	public void setHorizontalAlignment(int alignment) {
+		this.horizontalAlignment = alignment;
 	}
 
 	public void addIcon(final NamedIcon uiIcon) {
 		Icon icon = uiIcon.getIcon();
 		Objects.requireNonNull(icon);
-        mIcons.add(icon);
+		iconRow.addIcon(icon);
 		mUIIcons.add(uiIcon);
 	}
 
 	public void addIcon(final NamedIcon uiIcon, Quantity<LengthUnit> iconHeight) {
         Icon icon = uiIcon.getIcon(iconHeight);
         Objects.requireNonNull(icon);
-        mIcons.add(icon);
+        iconRow.addIcon(icon);
 		mUIIcons.add(uiIcon);
 	}
 
@@ -67,13 +75,13 @@ public class MultipleImageIcon implements Icon {
         final Quantity<LengthUnit> iconHeight = IconController.getController().getIconSize(node, option);
         final IconFactory iconFactory = IconFactory.getInstance();
         final Icon scaledIcon = iconFactory.canScaleIcon(icon) ? iconFactory.getScaledIcon(icon, iconHeight) : icon;
-        mIcons.add(scaledIcon);
+        iconRow.addIcon(scaledIcon);
         mUIIcons.add(null);
     }
 
     public void addIcon(Icon icon) {
         Objects.requireNonNull(icon);
-        mIcons.add(icon);
+        iconRow.addIcon(icon);
         mUIIcons.add(null);
     }
 
@@ -86,19 +94,12 @@ public class MultipleImageIcon implements Icon {
     public int getIconHeight() {
 		int height = getGraphicalIconHeight();
 		for(Icon tag : mTags)
-		    height += TAG_GAP + tag.getIconHeight();
+		    height += tag.getIconHeight();
         return height;
 	}
 
     private int getGraphicalIconHeight() {
-        int myY = 0;
-		for (final Icon icon : mIcons) {
-			final int otherHeight = icon.getIconHeight();
-			if (otherHeight > myY) {
-				myY = otherHeight;
-			}
-		}
-		return myY;
+        return iconRow.getIconHeight();
     }
 
 	@Override
@@ -110,79 +111,80 @@ public class MultipleImageIcon implements Icon {
 	}
 
     private int getGraphicalIconWidth() {
-        int myX = 0;
-		for (final Icon icon : mIcons) {
-			myX += icon.getIconWidth();
-		}
-		return myX;
+        return iconRow.getIconWidth();
     }
 
 	public int getImageCount() {
-		return mIcons.size();
+		return iconRow.getImageCount();
 	}
 
 	@Override
 	public void paintIcon(final Component c, final Graphics g, final int x, final int y) {
-	    boolean isLeftToRight = c.getComponentOrientation().isLeftToRight();
-	    final int graphicalIconWidth = isLeftToRight ? getGraphicalIconWidth() : 0;
-	    final int iconWidth = isLeftToRight ? getIconWidth() : 0;
+		boolean isLeftToRight = horizontalAlignment == SwingConstants.LEFT;
+	    final int graphicalIconWidth = isLeftToRight ? 0 : getGraphicalIconWidth();
+	    final int iconWidth = isLeftToRight ? 0 : getIconWidth();
 	    {
-	        int myX = isLeftToRight ? x + iconWidth - graphicalIconWidth : x;
-	        for (final Icon icon : mIcons) {
-	            icon.paintIcon(c, g, myX, y);
-	            myX += icon.getIconWidth();
-	        }
+	        int myX = x;
+	        if (horizontalAlignment == SwingConstants.CENTER)
+	        	myX += (iconWidth - graphicalIconWidth)/2;
+	        else if (horizontalAlignment == SwingConstants.RIGHT)
+	        	myX +=iconWidth - graphicalIconWidth;
+	        iconRow.paintIcon(c, g, myX, y);
 	    }
 	    int graphicalIconHeight = getGraphicalIconHeight();
-	    int myY = graphicalIconHeight == 0 ? y : y + TAG_GAP + graphicalIconHeight;
+	    int myY = graphicalIconHeight == 0 ? y : y + graphicalIconHeight;
 	    for (final Icon icon : mTags) {
-	        final int myX = isLeftToRight ? x + iconWidth - icon.getIconWidth() : x;
+	        int myX = x;
+	        if (horizontalAlignment == SwingConstants.CENTER)
+	        	myX += (iconWidth - icon.getIconWidth())/2;
+	        else if (horizontalAlignment == SwingConstants.RIGHT)
+	        	myX +=iconWidth - icon.getIconWidth();
 	        icon.paintIcon(c, g, myX, myY);
-	        myY += TAG_GAP + icon.getIconHeight();
+	        myY += icon.getIconHeight();
 	    }
 	}
 
 	public NamedIcon getUIIconAt(Point coordinate){
-		if(mIcons.isEmpty() || coordinate.x < 0 || coordinate.y < 0 || coordinate.y >= getGraphicalIconHeight())
+		if(! iconRow.containsIcons() || coordinate.x < 0 || coordinate.y < 0 || coordinate.y >= getGraphicalIconHeight())
 			return null;
+		boolean isLeftToRight = horizontalAlignment == SwingConstants.LEFT;
+		final int graphicalIconWidth = isLeftToRight ? 0 : getGraphicalIconWidth();
+		final int iconWidth = isLeftToRight ? 0 : getIconWidth();
 		int iconX = 0;
-		for (int iconIndex = 0; iconIndex < mIcons.size(); iconIndex++)
+		if (horizontalAlignment == SwingConstants.CENTER)
+			iconX += (iconWidth - graphicalIconWidth)/2;
+		else if (horizontalAlignment == SwingConstants.RIGHT)
+			iconX +=iconWidth - graphicalIconWidth;
+		for (int iconIndex = 0; iconIndex < iconRow.getImageCount(); iconIndex++)
 		{
-			iconX += mIcons.get(iconIndex).getIconWidth();
+			iconX += iconRow.getIcon(iconIndex).getIconWidth();
 			if(coordinate.x <= iconX){
 				return mUIIcons.get(iconIndex);
 			}
 		}
 		return null;
 	}
-    public Tag getTagAt(Point coordinate) {
+    public TagIcon getTagIconAt(Point coordinate) {
         if(mTags.isEmpty() || coordinate.x < 0 || coordinate.y <= getGraphicalIconHeight() || coordinate.x >= getIconWidth())
             return null;
         int graphicalIconHeight = getGraphicalIconHeight();
-        int myY = graphicalIconHeight == 0 ? 0 : TAG_GAP + graphicalIconHeight;
+        int myY = graphicalIconHeight == 0 ? 0 : graphicalIconHeight;
         for (final TagIcon icon : mTags) {
             final int iconHeight = icon.getIconHeight();
             if(myY <= coordinate.y && coordinate.y < myY + iconHeight)
-                return icon.getTag();
-            myY += TAG_GAP + iconHeight;
+                return icon;
+            myY += iconHeight;
         }
         return null;
     }
 
 	//DOCEAR - get a rect relative to this image for a specific icon
 	public Rectangle getIconR(Icon icon) {
-		int myX = 0;
-		for (final Icon ico : mIcons) {
-			if(ico.equals(icon)) {
-				return new Rectangle(myX, 0, ico.getIconWidth(), ico.getIconHeight());
-			}
-			myX += ico.getIconWidth();
-		}
-		return null;
+		return iconRow.getIconR(icon);
 	}
 
     public boolean containsIcons() {
-        return ! (mIcons.isEmpty() && mTags.isEmpty());
+        return iconRow.containsIcons() || ! mTags.isEmpty();
     }
 
 }

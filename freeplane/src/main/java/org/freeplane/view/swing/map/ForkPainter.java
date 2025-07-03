@@ -26,7 +26,6 @@ import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Stroke;
 
-import org.freeplane.api.Dash;
 import org.freeplane.core.ui.components.UITools;
 import org.freeplane.features.nodestyle.NodeGeometryModel;
 
@@ -51,7 +50,7 @@ class ForkPainter extends ShapedPainter {
 	        return super.getMainViewHeightWithFoldingMark(onlyFolded);
 		int height = mainView.getHeight();
 		if (! onlyFolded || nodeView.isFolded()) {
-			height += mainView.getZoomedFoldingMarkHalfWidth();
+			height += mainView.getZoomedFoldingMarkHalfSize();
 		}
 		return height;
 	}

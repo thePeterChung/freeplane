@@ -19,27 +19,32 @@
  */
 package org.freeplane.features.text.mindmapmode;
 
+import java.awt.AWTEvent;
 import java.awt.Component;
 import java.awt.EventQueue;
 import java.awt.KeyEventDispatcher;
 import java.awt.KeyboardFocusManager;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
-import java.awt.event.InputEvent;
+import java.awt.event.InputMethodEvent;
+import java.awt.event.InputMethodListener;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+
+import javax.swing.SwingUtilities;
 
 /**
  * @author Dimitry Polivaev
  * Aug 23, 2011
  */
-public class EventBuffer implements KeyEventDispatcher, FocusListener {
-	ArrayList<KeyEvent> events = new ArrayList<KeyEvent>(100);
+public class EventBuffer implements KeyEventDispatcher, FocusListener, InputMethodListener {
+	ArrayList<AWTEvent> events = new ArrayList<>(100);
 	private Component textComponent;
 	boolean isActive = false;
-	private InputEvent firstEvent;
-	private KeyEvent dispatchedEvent = null;
+	private AWTEvent firstEvent;
+	private AWTEvent dispatchedEvent = null;
+	private Component focusOwner;
 
 	public boolean isActive() {
 		return isActive;
@@ -61,10 +66,10 @@ public class EventBuffer implements KeyEventDispatcher, FocusListener {
 		if(ke.equals(dispatchedEvent) || events.isEmpty() && ke.getID() != KeyEvent.KEY_PRESSED){
 			return false;
 		}
-		addKeyEvent(ke);
-		
+		addAwtEvent(ke);
+
 		// Prevent Freeplane freeze
-		if(ke.getKeyCode() == KeyEvent.VK_ESCAPE 
+		if(ke.getKeyCode() == KeyEvent.VK_ESCAPE
 				&& ke.getID() == KeyEvent.KEY_RELEASED){
 			EventQueue.invokeLater(new Runnable() {
 				public void run() {
@@ -75,69 +80,86 @@ public class EventBuffer implements KeyEventDispatcher, FocusListener {
 		ke.consume();
 		return true;
 	}
-	private void addKeyEvent(final KeyEvent ke) {
-		if(textComponent != null){
-			KeyEvent newEvent = new KeyEvent(textComponent, ke.getID(), ke.getWhen(), ke.getModifiers(), ke.getKeyCode(), ke.getKeyChar(), ke.getKeyLocation());
-			events.add(newEvent);
-		}
-        else {
-	        events.add(ke);
-        }
+	private void addAwtEvent(final AWTEvent ke) {
+		events.add(ke);
 	}
-	
+
 	public void focusGained(final FocusEvent e) {
-		try{
-			textComponent.removeFocusListener(this);
-			for (int i = 0; i < events.size(); i++) {
-				final KeyEvent ke = events.get(i);
-				if(ke.getComponent().equals(textComponent))
-					dispatchedEvent = ke;
-				else{
-					dispatchedEvent = new KeyEvent(textComponent, ke.getID(), ke.getWhen(), ke.getModifiers(), ke.getKeyCode(), ke.getKeyChar(), ke.getKeyLocation());
+		textComponent.removeFocusListener(this);
+		SwingUtilities.invokeLater(() -> {
+			try{
+				for (int i = 0; i < events.size(); i++) {
+					final AWTEvent event = events.get(i);
+					if(event instanceof KeyEvent)
+					{
+						KeyEvent ke = (KeyEvent) event;
+						dispatchedEvent = new KeyEvent(textComponent, ke.getID(), ke.getWhen(), ke.getModifiers(), ke.getKeyCode(), ke.getKeyChar(), ke.getKeyLocation());
+					}
+					else if(event.getSource().equals(textComponent))
+						dispatchedEvent = event;
+					else if(event instanceof InputMethodEvent)
+					{
+						InputMethodEvent ime = (InputMethodEvent) event;
+						dispatchedEvent = new InputMethodEvent(textComponent, ime.getID(), ime.getWhen(), ime.getText(),
+								ime.getCommittedCharacterCount(), ime.getCaret(), ime.getVisiblePosition());
+					}
+					e.getComponent().dispatchEvent(dispatchedEvent);
+					dispatchedEvent = null;
 				}
-				e.getComponent().dispatchEvent(dispatchedEvent);
-				dispatchedEvent = null;
 			}
-		}
-		finally{
-			deactivate();
-		}
+			finally{
+				deactivate();
+			}
+		});
 	}
 
 	public void focusLost(final FocusEvent e) {
 	}
-	public void activate() {
-		if(isActive)
-			return;
-		KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(this);
-		isActive = true;
-	}
+
 	public void deactivate() {
 		if(! isActive)
 			return;
 		KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(this);
 		isActive = false;
-		if(textComponent != null)
+		if(textComponent != null) {
 			textComponent.removeFocusListener(this);
-		textComponent = null;
+			textComponent = null;
+		}
+		if(focusOwner != null) {
+			focusOwner.removeInputMethodListener(this);
+			focusOwner = null;
+		}
 		events.clear();
 		firstEvent = null;
 		dispatchedEvent = null;
 	}
-	public void activate(InputEvent e) {
-		activate();
-		if(e instanceof KeyEvent)
-			addKeyEvent((KeyEvent) e);
-		else if(e instanceof MouseEvent)
-			setFirstEvent(e);
+	public void activate(AWTEvent e) {
+		if(!isActive) {
+			final KeyboardFocusManager currentKeyboardFocusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+			if(e != null) {
+				focusOwner = (Component)e.getSource();
+				if(! focusOwner.isFocusOwner())
+					focusOwner.requestFocus();
+			}
+			else
+				focusOwner = currentKeyboardFocusManager.getFocusOwner();
+			currentKeyboardFocusManager.addKeyEventDispatcher(this);
+			focusOwner.addInputMethodListener(this);
+			isActive = true;
+
+		if(e instanceof MouseEvent)
+			setFirstEvent((MouseEvent)e);
+		else if(e != null)
+			addAwtEvent(e);
+		}
 	}
-	public void setFirstEvent(InputEvent e) {
+	public void setFirstEvent(AWTEvent e) {
 		firstEvent = e;
 	}
 
-	public KeyEvent getFirstEvent(){
-		if(firstEvent instanceof KeyEvent)
-			return (KeyEvent) firstEvent;
+	public AWTEvent getFirstEvent(){
+		if(firstEvent != null)
+			return firstEvent;
 		if(events.isEmpty())
 			return null;
 		return events.get(0);
@@ -148,5 +170,13 @@ public class EventBuffer implements KeyEventDispatcher, FocusListener {
 			return (MouseEvent) firstEvent;
 		else
 			return null;
+	}
+	@Override
+	public void inputMethodTextChanged(InputMethodEvent event) {
+		addAwtEvent(event);
+	}
+	@Override
+	public void caretPositionChanged(InputMethodEvent event) {
+		addAwtEvent(event);
 	}
 }

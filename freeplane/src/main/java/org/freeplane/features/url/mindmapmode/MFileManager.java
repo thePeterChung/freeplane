@@ -47,12 +47,13 @@ import java.nio.file.Files;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import javax.swing.JFileChooser;
+import org.freeplane.api.swing.JFileChooser;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileFilter;
 import javax.swing.plaf.FileChooserUI;
@@ -103,7 +104,6 @@ import org.freeplane.view.swing.features.filepreview.MindMapPreviewWithOptions;
 public class MFileManager extends UrlManager implements IMapViewChangeListener {
 	public static final String STANDARD_TEMPLATE = "standard_template";
 	private static final String DEFAULT_SAVE_DIR_PROPERTY = "default_save_dir";
-	private static final String BACKUP_EXTENSION = "bak";
     static final String BACKUP_DIR = ".backup";
 	private static final int DEBUG_OFFSET = 0;
 
@@ -157,11 +157,7 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 	private static File singleBackupDirectory;
     private final MMapController mapController;
 	private File[] findFileRevisions(final File file, final File backupDir, final AlternativeFileMode mode) {
-		final String fileExtensionPattern;
-		if (mode == AlternativeFileMode.ALL)
-			fileExtensionPattern = "(" + BACKUP_EXTENSION + "|" + DoAutomaticSave.AUTOSAVE_EXTENSION + ")";
-		else
-			fileExtensionPattern = DoAutomaticSave.AUTOSAVE_EXTENSION;
+		final String fileExtensionPattern = mode.fileExtension;
 		final Pattern pattern = Pattern
 		    .compile("^" + Pattern.quote(backupFileName(file)) + "\\.+\\d+\\." + fileExtensionPattern);
 		if (backupDir.exists()) {
@@ -187,15 +183,17 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 		return file.getName() + "." + file.hashCode();
 	}
 
-	private static void backupFile(final File file, final int backupFileNumber, final String extension) {
+	private static void backupFile(final File file, final int backupFileNumber, AlternativeFileMode mode) {
 		if (backupFileNumber == 0) {
 			return;
 		}
 		final File backupDir = MFileManager.backupDir(file);
 		backupDir.mkdir();
 		if (backupDir.exists()) {
-			final File backupFile = MFileManager.renameBackupFiles(backupDir, file, backupFileNumber, extension);
-			if (!backupFile.exists()) {
+			final File backupFile = MFileManager.renameBackupFiles(backupDir, file, backupFileNumber, mode, false);
+			if(backupFile == null)
+				LogUtils.severe("Can't create backup for " + file);
+			else if (!backupFile.exists()) {
 				performBackup(file, backupFile);
 			}
 		}
@@ -221,25 +219,37 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 		    return new File(file.getParentFile(), BACKUP_DIR);
 	}
 
-	static File createBackupFile(final File backupDir, final File file, final int number, final String extension) {
-		return new File(backupDir, backupFileName(file) + '.' + number + '.' + extension);
+	static File backupFile(final File backupDir, final File file, final int number, final AlternativeFileMode mode) {
+		return new File(backupDir, backupFileName(file) + '.' + number + '.' + mode.fileExtension);
 	}
 
-	static File renameBackupFiles(final File backupDir, final File file, final int backupFileNumber,
-	                              final String extension) {
+	static File renameAutosaveFiles(final File backupDir, final File file, final int backupFileNumber, boolean deleteOnExit) {
+		return renameBackupFiles(backupDir, file, backupFileNumber, AlternativeFileMode.AUTOSAVE, deleteOnExit);
+	}
+	private static Set<String> deletedOnExitFiles = new HashSet<>();
+	private static File renameBackupFiles(final File backupDir, final File file, final int backupFileNumber,
+	                              final AlternativeFileMode mode, boolean deleteOnExit) {
 		if (backupFileNumber == 0) {
 			return null;
 		}
 		for (int i = backupFileNumber + 1;; i++) {
-			final File newFile = MFileManager.createBackupFile(backupDir, file, i, extension);
+			final File newFile = backupFile(backupDir, file, i, mode);
 			if (!newFile.exists()) {
 				break;
 			}
 			newFile.delete();
 		}
+		if(deleteOnExit) {
+			for (int i = 1; i <= backupFileNumber; i++) {
+				File backupFile = backupFile(backupDir, file, i, mode);
+				if(i == 1 && ! deletedOnExitFiles.add(backupFile.getPath()))
+					break;
+				backupFile.deleteOnExit();
+			}
+		}
 		int i = backupFileNumber;
 		for (;;) {
-			final File newFile = MFileManager.createBackupFile(backupDir, file, i, extension);
+			final File newFile = backupFile(backupDir, file, i, mode);
 			if (newFile.exists()) {
 				break;
 			}
@@ -249,17 +259,17 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 			}
 		}
 		if (i < backupFileNumber) {
-			return MFileManager.createBackupFile(backupDir, file, i + 1, extension);
+			return backupFile(backupDir, file, i + 1, mode);
 		}
 		for (i = 1; i < backupFileNumber; i++) {
-			final File newFile = MFileManager.createBackupFile(backupDir, file, i, extension);
-			final File oldFile = MFileManager.createBackupFile(backupDir, file, i + 1, extension);
+			final File newFile = backupFile(backupDir, file, i, mode);
+			final File oldFile = backupFile(backupDir, file, i + 1, mode);
 			newFile.delete();
 			if (!oldFile.renameTo(newFile)) {
 				return null;
 			}
 		}
-		return MFileManager.createBackupFile(backupDir, file, backupFileNumber, extension);
+		return backupFile(backupDir, file, backupFileNumber, mode);
 	}
 
 	public MFileManager(MMapController mapController) {
@@ -322,7 +332,7 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 			return;
 		}
 		final int backupFileNumber = ResourceController.getResourceController().getIntProperty(BACKUP_FILE_NUMBER, 0);
-		MFileManager.backupFile(file, backupFileNumber, BACKUP_EXTENSION);
+		MFileManager.backupFile(file, backupFileNumber, AlternativeFileMode.BACKUP);
 	}
 
 	private void createActions() {
@@ -510,8 +520,14 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 	}
 
 	public enum AlternativeFileMode {
-		ALL, AUTOSAVE
-	};
+		ALL("(bak|autosave)"), AUTOSAVE("autosave"), BACKUP("bak");
+		public final String fileExtension;
+
+		private AlternativeFileMode(String extension) {
+			this.fileExtension = extension;
+		}
+
+	}
 
 	public File getAlternativeFile(final File file, AlternativeFileMode mode) {
 		final File[] revisions = findFileRevisions(file, MFileManager.backupDir(file), mode);
@@ -907,7 +923,7 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 	}
 
 	@Override
-	public void afterViewCreated(Component oldView, Component newView) {
+	public void afterViewDisplayed(Component oldView, Component newView) {
 		if (newView != null) {
 			final FileOpener fileOpener = new FileOpener("mm", new DroppedMindMapOpener());
 			new DropTarget(newView, fileOpener);
@@ -918,4 +934,5 @@ public class MFileManager extends UrlManager implements IMapViewChangeListener {
 	public static MFileManager getController(ModeController modeController) {
 		return (MFileManager) modeController.getExtension(UrlManager.class);
 	}
+
 }

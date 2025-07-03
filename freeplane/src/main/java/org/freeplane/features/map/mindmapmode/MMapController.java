@@ -230,9 +230,8 @@ public class MMapController extends MapController {
         if(ResourceController.getResourceController().getBooleanProperty("copyFormatToNewNodeIncludesIcons")) {
             getMModeController().copyExtensions(Keys.ICONS, source, target);
         }
+        nodeRefresh(target);
     }
-
-
 
     @Override
     protected MapClipboardController createMapClipboardController() {
@@ -511,20 +510,25 @@ public class MMapController extends MapController {
         insertNode(node, parent, findNewNodePosition(parent));
     }
 
-    public void insertNode(final NodeModel node, final NodeModel target, final boolean asSibling) {
+    public void insertNode(final NodeModel node, final NodeModel target, final InsertionRelation insertionRelation) {
         NodeModel parent;
-        if (asSibling) {
+        if (insertionRelation != InsertionRelation.AS_CHILD) {
             parent = target.getParentNode();
         }
         else {
             parent = target;
         }
-        if (asSibling) {
-            insertNode(node, parent, parent.getIndex(target));
-        }
-        else {
-            insertNode(node, parent, findNewNodePosition(target));
-        }
+        switch (insertionRelation) {
+		case AS_SIBLING_BEFORE:
+			insertNode(node, parent, parent.getIndex(target));
+			break;
+		case AS_SIBLING_AFTER:
+			insertNode(node, parent, parent.getIndex(target) + 1);
+			break;
+		case AS_CHILD:
+			insertNode(node, parent, findNewNodePosition(target));
+			break;
+		}
     }
 
     public void insertNode(final NodeModel node, final NodeModel parentNode, final int index) {
@@ -576,11 +580,13 @@ public class MMapController extends MapController {
     				@Override
     				public void act() {
     					node.setSide(side);
+    					mapSaved(node.getMap(), false);
     					delayedNodeRefresh(node, Side.class, oldSide, side);
     				}
     				@Override
     				public void undo() {
     					node.setSide(oldSide);
+    					mapSaved(node.getMap(), false);
     					delayedNodeRefresh(node, Side.class, side, oldSide);
     				}
 
@@ -601,7 +607,7 @@ public class MMapController extends MapController {
 
 
     public void moveNodeAndItsClones(NodeModel child, final NodeModel newParent, int newIndex) {
-        if(child.subtreeContainsCloneOf(newParent)){
+        if(child.subtreeContainsCloneOf(newParent) || child.getMap() != newParent.getMap()){
             UITools.errorMessage("not allowed");
             return;
         }
@@ -697,27 +703,28 @@ public class MMapController extends MapController {
         Controller.getCurrentModeController().execute(actor, newParent.getMap());
     }
 
-    public void moveNodesAsChildren(final List<NodeModel> children, final NodeModel target) {
-        FreeNode r = Controller.getCurrentModeController().getExtension(FreeNode.class);
-        for(NodeModel node : children){
-            final IExtension extension = node.getExtension(FreeNode.class);
-            if (extension != null) {
-                r.undoableToggleHook(node, extension);
-                if (MapStyleModel.FLOATING_STYLE.equals(LogicalStyleModel.getStyle(node)))
-                    ((MLogicalStyleController)MLogicalStyleController.getController(getMModeController())).setStyle(node, null);
-            }
-        }
-        int position = target.getChildCount();
-        moveNodes(children, target, position);
-    }
-
-    public void moveNodesBefore(final List<NodeModel> children, final NodeModel target) {
-        final NodeModel newParent = target.getParentNode();
-        int newIndex = newParent.getIndex(target);
-        for(NodeModel node : children){
-            Controller.getCurrentModeController().getExtension(FreeNode.class).undoableDeactivateHook(node);
-        }
-        moveNodes(children, newParent, newIndex);
+    public void moveNodes(final List<NodeModel> children, final NodeModel target, InsertionRelation insertionRelation) {
+    	if(insertionRelation == InsertionRelation.AS_CHILD) {
+    		FreeNode r = Controller.getCurrentModeController().getExtension(FreeNode.class);
+    		for(NodeModel node : children){
+    			final IExtension extension = node.getExtension(FreeNode.class);
+    			if (extension != null) {
+    				r.undoableToggleHook(node, extension);
+    				if (MapStyleModel.FLOATING_STYLE.equals(LogicalStyleModel.getStyle(node)))
+    					((MLogicalStyleController)MLogicalStyleController.getController(getMModeController())).setStyle(node, null);
+    			}
+    		}
+    		int position = target.getChildCount();
+    		moveNodes(children, target, position);
+    	}
+    	else {
+    		final NodeModel newParent = target.getParentNode();
+    		int newIndex = newParent.getIndex(target) + (insertionRelation == InsertionRelation.AS_SIBLING_AFTER ? 1 : 0);
+    		for(NodeModel node : children){
+    			Controller.getCurrentModeController().getExtension(FreeNode.class).undoableDeactivateHook(node);
+    		}
+    		moveNodes(children, newParent, newIndex);
+    	}
     }
 
     public void moveNodesInGivenDirection(NodeModel selectionRoot, NodeModel selected, Collection<NodeModel> movedNodes, final int direction) {

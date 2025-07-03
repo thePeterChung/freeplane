@@ -2,7 +2,9 @@ package org.freeplane.view.swing.map;
 
 import java.awt.Component;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.LayoutManager;
+import java.awt.geom.AffineTransform;
 
 import javax.swing.JComponent;
 
@@ -37,5 +39,25 @@ class ContentPane extends JComponent {
 		}
 		return false;
 	}
+
+	@Override
+	protected void paintChildren(Graphics g) {
+		Graphics2D g2 = (Graphics2D) g;
+		int width = getWidth();
+		int height = getHeight();
+		
+		AffineTransform t = g2.getTransform();
+		double approxScaleX = Math.abs(t.getScaleX()) + Math.abs(t.getShearY());
+		double approxScaleY = Math.abs(t.getShearX()) + Math.abs(t.getScaleY());
+		if (height * approxScaleY <= 2 || width * approxScaleX <= 2) {
+			final NodeView parent = (NodeView) getParent();
+			MainView mainView = parent.getMainView();
+			g.setColor(mainView.getBorderColor());
+			g.fillRect(0, 0, getWidth(), getHeight());
+		} else
+			super.paintChildren(g);
+	}
+	
+	
 
 }

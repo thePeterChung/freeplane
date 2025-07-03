@@ -19,12 +19,9 @@
  */
 package org.freeplane.main.application;
 
-import java.awt.Component;
 import java.awt.Container;
 import java.awt.EventQueue;
-import java.awt.Frame;
 import java.awt.Toolkit;
-import java.awt.Window;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
@@ -180,13 +177,9 @@ public class FreeplaneGUIStarter implements FreeplaneStarter {
 			final String lookandfeel;
 			if(systemPropertyLookandfeel == null) {
 				applicationResourceController.addPropertyChangeListener((propertyName, newValue, oldValue) -> {
-					if("lookandfeel".equals(propertyName)) {
+					if("lookandfeel".equals(propertyName)
+							&& ! FrameController.VAQUA_LAF_CLASS_NAME.equals(newValue)) {
 						FrameController.setLookAndFeel(newValue);
-						if(FrameController.VAQUA_LAF_CLASS_NAME.equals(newValue)) {
-							final Component currentRootComponent = UITools.getMenuComponent();
-							Stream.of(SwingUtilities.getRootPane(currentRootComponent).getComponents())
-							.forEach(SwingUtilities::updateComponentTreeUI);
-						}
 						SwingUtilities.updateComponentTreeUI(UITools.getFrame());
 					}
 				});
@@ -332,35 +325,24 @@ public class FreeplaneGUIStarter implements FreeplaneStarter {
 
 			private void finishStartup() {
 			    ExternalMapChangeMonitor.install(controller.getMapViewManager());
-				focusCurrentView();
 				contentPane.setVisible(true);
-				frame.toFront();
 				startupFinished = true;
-				try {
-					Thread.sleep(1000);
-				}
-				catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-
-				UITools.executeWhenNodeHasFocus(new Runnable() {
-					@Override
-					public void run() {
-						fireStartupFinished();
-						MenuUtils.executeMenuItems(options.getMenuItemsToExecute());
-						if(options.shouldStopAfterLaunch())
-							System.exit(0);
-					}
+				focusCurrentView(() -> {
+					fireStartupFinished();
+					MenuUtils.executeMenuItems(options.getMenuItemsToExecute());
+					if(options.shouldStopAfterLaunch())
+						System.exit(0);
 				});
 			}
 
-			private void focusCurrentView() {
+			private void focusCurrentView(Runnable onFocus) {
 				final MapView currentMapView = (MapView) Controller.getCurrentController().getMapViewManager().getMapViewComponent();
 				if(currentMapView != null){
-					viewController.focusTo(currentMapView);
+					viewController.focusTo(currentMapView, onFocus);
 				}
+				else
+					onFocus.run();
 			}
-
 		});
 	}
 
@@ -427,30 +409,12 @@ public class FreeplaneGUIStarter implements FreeplaneStarter {
 			public void run() {
                 if(startupFinished && EventQueue.isDispatchThread()){
                     loadMaps(Controller.getCurrentController(), args);
-                    toFront();
                     return;
                 }
                 EventQueue.invokeLater(this);
             }
         });
 	}
-
-    private void toFront() {
-    	final Component menuComponent = UITools.getMenuComponent();
-    	if(menuComponent instanceof Frame) {
-    		final Frame frame = (Frame) menuComponent;
-    		final int state = frame.getExtendedState();
-    		if ((state & Frame.ICONIFIED) != 0)
-    			frame.setExtendedState(state & ~Frame.ICONIFIED);
-    	}
-    	if(menuComponent instanceof Window) {
-    		Window window = (Window) menuComponent;
-    		if (!window.isVisible())
-    			window.setVisible(true);
-    		window.toFront();
-    		window.requestFocus();
-    	}
-    }
 
     private void loadMaps(final Controller controller, final String[] args) {
 		controller.selectMode(MModeController.MODENAME);

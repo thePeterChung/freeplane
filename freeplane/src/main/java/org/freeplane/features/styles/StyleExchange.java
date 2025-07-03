@@ -3,6 +3,7 @@ package org.freeplane.features.styles;
 import org.freeplane.core.extension.IExtension;
 import org.freeplane.core.undo.IActor;
 import org.freeplane.core.undo.IUndoHandler;
+import org.freeplane.features.attribute.AttributeRegistry;
 import org.freeplane.features.edge.AutomaticEdgeColorHook;
 import org.freeplane.features.icon.IconRegistry;
 import org.freeplane.features.map.MapModel;
@@ -38,19 +39,22 @@ class StyleExchange {
         makeUndoableAndRefreshView(oldStyleModel);
     }
 
-    void copyMapStyles() {
+    void copyMapStyles(boolean mergeConditionalStyles) {
         final MapStyleModel oldStyleModel =  targetMap.getRootNode().getExtension(MapStyleModel.class);
-        copyMapStylesNoUndoNoRefresh();
+        copyMapStylesNoUndoNoRefresh(mergeConditionalStyles);
         makeUndoableAndRefreshView(oldStyleModel);
     }
 
-	void copyMapStylesNoUndoNoRefresh() {
+	void copyMapStylesNoUndoNoRefresh(boolean mergeConditionalStyles) {
 		final ModeController modeController = Controller.getCurrentModeController();
         final MapStyleModel oldStyleModel = targetMap.getRootNode().removeExtension(MapStyleModel.class);
         modeController.getExtension(MapStyle.class).onCreate(sourceMap);
         final MapStyleModel source = MapStyleModel.getExtension(sourceMap);
         source.addUserStylesFrom(oldStyleModel);
-        source.addConditionalStylesFrom(oldStyleModel);
+        if(mergeConditionalStyles)
+        	source.addConditionalStylesFrom(oldStyleModel);
+        else
+        	source.setConditionalStylesIfEmpty(oldStyleModel);
         source.setNonStyleUserPropertiesFrom(oldStyleModel);
         moveStyle(true);
         MapStyleModel styleModel = targetMap.getRootNode().getExtension(MapStyleModel.class);
@@ -95,6 +99,13 @@ class StyleExchange {
         IconRegistry iconRegistry = targetMap.getIconRegistry();
         styleMap.setIconRegistry(iconRegistry);
         iconRegistry.registryMapContent(styleMap);
+        AttributeRegistry attributeRegistry = targetMap.getExtension(AttributeRegistry.class);
+        if(attributeRegistry != null) {
+        	styleMap.putExtension(AttributeRegistry.class, attributeRegistry);
+        }
+        else {
+        	styleMap.removeExtension(AttributeRegistry.class);
+        }
     	final NodeModel targetRoot = targetMap.getRootNode();
     	final MapStyleModel target = MapStyleModel.getExtensionOrNull(targetRoot);
     	if(target == null){

@@ -36,6 +36,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -453,6 +454,23 @@ public class LinkController extends SelectionController implements IExtension {
         return getProperty(connector, ConnectorModel::getArrows, this::getStandardConnectorArrows);
     }
 
+ 	public NodeModel getLinkedNode(final NodeModel node) {
+		final Hyperlink link = NodeLinks.getLink(node);
+		if (link == null) {
+			return null;
+		}
+		final String adaptedText = link.toString();
+		if (adaptedText.startsWith("#")) {
+			final MapExplorerController explorer = modeController.getExtension(MapExplorerController.class);
+			final String reference = adaptedText.substring(1);
+			final NodeModel dest = explorer.getNodeAt(node, reference);
+			if (dest != null) {
+				return dest;
+			}
+		}
+		return null;
+	}
+
  	public String getLinkShortText(final NodeModel node) {
 		final Hyperlink link = NodeLinks.getLink(node);
 		if (link == null) {
@@ -620,11 +638,21 @@ public class LinkController extends SelectionController implements IExtension {
 			}
 			else if (LinkController.isSpecialLink(LinkController.EXECUTE_APP_SCHEME, link)) {
 				final String command = LinkController.parseSpecialLink(link);
+				final String[] commandArray = command.split(" +(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
+				int i = 0;
+				for (String cmd : commandArray) {
+					if (cmd.startsWith("\"") && cmd.endsWith("\"")) {
+						commandArray[i] = cmd.replaceAll("(^\"|\"$)", "");
+					}
+					i++;
+				}
 				try {
 					Controller.getCurrentController().getViewController().out(command);
-					Runtime.getRuntime().exec(command);
+					Runtime.getRuntime().exec(commandArray);
 				}
 				catch (IOException e1) {
+					final String msg = EXECUTE_APP_SCHEME + ": " + Arrays.toString(commandArray) + " - " + e1.getMessage();
+					Controller.getCurrentController().getViewController().out(msg);
 				}
 			}
 			else {
@@ -813,7 +841,7 @@ public class LinkController extends SelectionController implements IExtension {
 				final Matcher mat = patURI.matcher(inputValue);
 				if (mat.matches()) {
 					final String scheme = mat.group(1);
-					final String ssp = mat.group(2).replace('\\', '/');
+					final String ssp = mat.group(2);
 					final String fragment = mat.group(3);
 					return new Hyperlink(inputValue, new URI(scheme, ssp, fragment));
 				}
@@ -893,7 +921,8 @@ public class LinkController extends SelectionController implements IExtension {
 
 	// this will fail badly for non-menuitem uris!
 	public static String parseSpecialLink(final Hyperlink link) {
-		return convertPre15VersionStyleKeysToCurrent(link.getUri().getSchemeSpecificPart().substring(1));
+		String schemeSpecificPart = link.getUri().getSchemeSpecificPart();
+		return convertPre15VersionStyleKeysToCurrent(schemeSpecificPart.startsWith("_") ? schemeSpecificPart.substring(1) : schemeSpecificPart);
 	}
 
 	private static String convertPre15VersionStyleKeysToCurrent(final String actionKey) {

@@ -11,7 +11,7 @@
 ; Predrag Cuklin 18/06/2009 - Universial Version
 ;****************************************************************************
 
-#define MyVersion "1.2.2"
+#define MyVersion "1.12.12"
 #define MyStatus ""
 #define MyAppName "Freeplane"
 #define MyAppPublisher "Open source"
@@ -24,13 +24,13 @@
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{D3941722-C4DD-4509-88C4-0E87F675A859}
-AppCopyright=Copyright © 2000-2024 Freeplane team and others
+AppCopyright=Copyright © 2000-2025 Freeplane team and others
 AppName={#MyAppName}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
-DefaultDirName={pf}\{#MyAppName}
+DefaultDirName={code:GetDefaultInstallDir}
 DefaultGroupName={#MyAppName}
 ArchitecturesInstallIn64BitMode=x64 ia64
 OutputDir=.
@@ -38,7 +38,8 @@ OutputBaseFilename=Freeplane-Setup
 SetupIconFile=Setup.ico
 VersionInfoDescription=Free mind mapping software. Fast. Simple. Streamlined.
 ChangesAssociations=true
-PrivilegesRequired=none
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=commandline dialog
 AllowNoIcons=true
 ShowTasksTreeLines=true
 WindowVisible=true
@@ -73,40 +74,44 @@ Name: quicklaunchicon; Description: {cm:CreateQuickLaunchIcon}; GroupDescription
 Name: associate; Description: {cm:AssocFileExtension,Freeplane,.mm}; GroupDescription: {cm:AssocingFileExtension,Freeplane,.mm}
 
 [Files]
-Source: "..\..\BIN\*"; DestDir: "{app}"; Flags: ignoreversion createallsubdirs recursesubdirs; Excludes: "\*.l4j.ini"
-Source: "..\..\BIN\*.l4j.ini"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
-
-#ifdef includeJavaRuntime
-Source: "..\..\java-runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion createallsubdirs recursesubdirs
-#endif
+Source: "{#AppImage}\freeplane\*"; DestDir: "{app}"; Flags: ignoreversion createallsubdirs recursesubdirs; Excludes: "\app\*.cfg"
+Source: "{#AppImage}\freeplane\app\*.cfg"; DestDir: "{app}\app"; Flags: ignoreversion onlyifdoesntexist
 
 [Icons]
-Name: {group}\{#MyAppName}; Filename: {app}\{#MyAppExeName}; Tasks:
-Name: {group}\Uninstall Freeplane; Filename: {uninstallexe}; Tasks:
-Name: {commondesktop}\{#MyAppName}; Filename: {app}\{#MyAppExeName}; Tasks: desktopicon
+Name: {group}\{#MyAppName}; Filename: {app}\{#MyAppExeName}
+Name: {group}\Uninstall Freeplane; Filename: {uninstallexe}
+Name: {code:GetDesktopDir}\{#MyAppName}; Filename: {app}\{#MyAppExeName}; Tasks: desktopicon
 Name: {userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}; Filename: {app}\{#MyAppExeName}; Tasks: quicklaunchicon
 
 [Run]
 Filename: {app}\{#MyAppExeName}; Description: {cm:LaunchProgram,{#MyAppName}}; Flags: nowait postinstall skipifsilent
 
 [Registry]
-;".myp" is the extension we're associating. "MyProgramFile" is the internal name for the file type as stored in the registry. Make sure you use a unique name for this so you don't inadvertently overwrite another application's registry key.
-;"My Program File" above is the name for the file type as shown in Explorer.
-;"DefaultIcon" is the registry key that specifies the filename containing the icon to associate with the file type. ",0" tells Explorer to use the first icon from MYPROG.EXE. (",1" would mean the second icon.)
-Root: "HKLM"; Subkey: "Software\JavaSoft\Prefs"
-Root: "HKCR"; Subkey: "Applications\freeplane.exe"; Flags: deletekey; Tasks: associate
-Root: "HKCR"; Subkey: ".mm"; Flags: deletekey; Tasks: associate
-Root: "HKLM"; Subkey: "SOFTWARE\Classes\.mm"; Flags: deletekey; Tasks: associate
-Root: "HKCU"; Subkey: "Software\Classes\Applications\freeplane.exe"; Flags: deletekey; Tasks: associate
-Root: "HKCU"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mm"; Flags: deletekey; Tasks: associate
-Root: "HKCR"; Subkey: ".mm"; ValueType: string; ValueData: "FreeplaneApplication"; Flags: uninsdeletekey; Tasks: associate
-Root: "HKCR"; Subkey: "freeplane"; ValueType: string; ValueData: "URL:Freeplane protocol"; Flags: uninsdeletekey; Tasks: associate
-Root: "HKCR"; Subkey: "freeplane"; ValueType: string; ValueName: "URL Protocol"; Flags: uninsdeletekey; Tasks: associate
-Root: "HKCR"; Subkey: "freeplane\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate
-Root: "HKCR"; Subkey: "freeplane\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate
-Root: "HKCR"; Subkey: "FreeplaneApplication"; ValueType: string; ValueData: "Freeplane mind map"; Flags: uninsdeletekey; Tasks: associate
-Root: "HKCR"; Subkey: "FreeplaneApplication\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate
-Root: "HKCR"; Subkey: "FreeplaneApplication\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate
+; Non-admin installation registry entries (HKCU)
+Root: "HKCU"; Subkey: "Software\Classes\.mm"; ValueType: string; ValueData: "FreeplaneApplication"; Flags: uninsdeletekey; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\freeplane"; ValueType: string; ValueData: "URL:Freeplane protocol"; Flags: uninsdeletekey; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\freeplane"; ValueType: string; ValueName: "URL Protocol"; Flags: uninsdeletekey; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\freeplane\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\freeplane\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\FreeplaneApplication"; ValueType: string; ValueData: "Freeplane mind map"; Flags: uninsdeletekey; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\FreeplaneApplication\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate; Check: not IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\FreeplaneApplication\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate; Check: not IsAdminLoggedOn
+
+; Admin installation registry entries (HKLM/HKCR)
+Root: "HKLM"; Subkey: "Software\JavaSoft\Prefs"; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "Applications\freeplane.exe"; Flags: deletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: ".mm"; Flags: deletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKLM"; Subkey: "SOFTWARE\Classes\.mm"; Flags: deletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Classes\Applications\freeplane.exe"; Flags: deletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCU"; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mm"; Flags: deletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: ".mm"; ValueType: string; ValueData: "FreeplaneApplication"; Flags: uninsdeletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "freeplane"; ValueType: string; ValueData: "URL:Freeplane protocol"; Flags: uninsdeletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "freeplane"; ValueType: string; ValueName: "URL Protocol"; Flags: uninsdeletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "freeplane\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "freeplane\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "FreeplaneApplication"; ValueType: string; ValueData: "Freeplane mind map"; Flags: uninsdeletekey; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "FreeplaneApplication\Shell\Open\Command"; ValueType: string; ValueData: """{app}\freeplane.exe"" ""%1"""; Flags: uninsdeletevalue; Tasks: associate; Check: IsAdminLoggedOn
+Root: "HKCR"; Subkey: "FreeplaneApplication\DefaultIcon"; ValueType: string; ValueData: "{app}\freeplaneIcons.dll,0"; Flags: uninsdeletevalue; Tasks: associate; Check: IsAdminLoggedOn
 
 [InstallDelete]
 Type: filesandordirs; Name: "{app}\core"
@@ -117,7 +122,7 @@ Type: filesandordirs; Name: "{app}\runtime"
 Type: filesandordirs; Name: "{app}"
 
 [Dirs]
-Name: {userappdata}\Freeplane; Flags: uninsneveruninstall; Tasks: ; Languages:
+Name: {userappdata}\Freeplane; Flags: uninsneveruninstall
 
 [Code]
 function CmdLineParamExists(const Value: string): Boolean;
@@ -142,6 +147,7 @@ function KeepConfigurationFilesForced: Boolean;
 begin
   Result := CmdLineParamExists('/KEEP_CONFIGURATION_FILES');
 end;
+
 // ask for delete config file during uninstall
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
@@ -160,4 +166,49 @@ begin
           end
       end;
   end;
+end;
+
+function IsExistingInstallation: Boolean;
+begin
+  Result := DirExists(ExpandConstant('{pf}\{#MyAppName}')) or
+            DirExists(ExpandConstant('{localappdata}\Programs\{#MyAppName}'));
+end;
+
+function IsNonAdminInstallation: Boolean;
+begin
+  Result := DirExists(ExpandConstant('{localappdata}\Programs\{#MyAppName}'));
+end;
+
+function GetDefaultInstallDir(Param: string): string;
+begin
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{pf}\{#MyAppName}')
+  else
+    Result := ExpandConstant('{localappdata}\Programs\{#MyAppName}');
+end;
+
+function NeedToChangePrivileges: Boolean;
+begin
+  // Don't elevate only if it's a local installation
+  Result := not IsNonAdminInstallation;
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  // If global installation exists but we're not admin, fail
+  if IsExistingInstallation and not IsNonAdminInstallation and not IsAdminLoggedOn then
+  begin
+    MsgBox('Administrator privileges are required to update existing global installation.', mbError, MB_OK);
+    Result := False;
+    exit;
+  end;
+  Result := True;
+end;
+
+function GetDesktopDir(Param: string): string;
+begin
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{commondesktop}')
+  else
+    Result := ExpandConstant('{userdesktop}');
 end;

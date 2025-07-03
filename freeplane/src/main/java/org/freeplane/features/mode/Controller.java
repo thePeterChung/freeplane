@@ -42,7 +42,6 @@ import org.freeplane.features.map.IMapLifeCycleListener;
 import org.freeplane.features.map.IMapSelection;
 import org.freeplane.features.map.IMapSelection.NodePosition;
 import org.freeplane.features.map.MapModel;
-import org.freeplane.features.mode.mindmapmode.MModeController;
 import org.freeplane.features.ui.IMapViewManager;
 import org.freeplane.features.ui.ViewController;
 import org.freeplane.main.application.ApplicationLifecycleListener;
@@ -204,19 +203,6 @@ public class Controller extends AController implements FreeplaneActions, IMapLif
 		return true;
 	}
 
-	public static void exec(final String string) throws IOException {
-		exec(string, false);
-	}
-
-	public static void exec(final String string, boolean waitFor) throws IOException {
-		IControllerExecuteExtension ext = Controller.getCurrentController().getExtension(IControllerExecuteExtension.class);
-		if(ext == null) {
-			ext = Controller.getCurrentController().getDefaultExecuter();
-		}
-
-		ext.exec(string, waitFor);
-	}
-
 	public static void exec(final String[] command) throws IOException {
 		exec(command, false);
 	}
@@ -234,14 +220,10 @@ public class Controller extends AController implements FreeplaneActions, IMapLif
 		return new IControllerExecuteExtension() {
 
 			public void exec(String[] command, boolean waitFor) throws IOException {
-		LogUtils.info("execute " + Arrays.toString(command));
-				Process proc = Runtime.getRuntime().exec(command);
-				waiting(waitFor, proc);
-			}
-
-			public void exec(String string, boolean waitFor) throws IOException {
-				LogUtils.info("execute " + string);
-				Process proc = Runtime.getRuntime().exec(string);
+				LogUtils.info("execute " + Arrays.toString(command));
+				ProcessBuilder pb = new ProcessBuilder(command);
+				pb.redirectErrorStream(true);
+				Process proc = pb.start();
 				waiting(waitFor, proc);
 			}
 

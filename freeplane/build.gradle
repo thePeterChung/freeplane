@@ -19,29 +19,28 @@ sourceSets {
 
 dependencies {
 	mergedViewerDependencies 'org.freeplane.dpolivaev.mnemonicsetter:mnemonicsetter:0.6'
-	lib ':kitfox-svg-salamander-1.1.1-p1'
+	lib 'com.formdev:svgSalamander:1.1.4'
 	lib 'com.github.robtimus:data-url:2.0.1'
-	lib 'com.formdev:flatlaf:3.4.1'
-	lib 'com.twelvemonkeys.imageio:imageio-jpeg:3.10.1'
+	lib 'com.formdev:flatlaf:3.6'
+	lib 'com.twelvemonkeys.imageio:imageio-jpeg:3.12.0'
 
     lib project(':JOrtho_0.4_freeplane')
     api project(':freeplane_api')
 
     lib 'commons-lang:commons-lang:2.6',
-            'commons-io:commons-io:2.16.1',
-            'commons-codec:commons-codec:1.17.0',
+            'commons-io:commons-io:2.19.0',
+            'commons-codec:commons-codec:1.18.0',
             'com.jgoodies:jgoodies-forms:1.9.0',
             'com.jgoodies:jgoodies-common:1.8.1'
 
-	lib  ('org.freeplane.lightdev:simplyhtml:0.19.9') {
+	lib  ('org.freeplane.lightdev:simplyhtml:0.19.11') {
 		exclude module: 'javahelp'
 		exclude module: 'mnemonicsetter'
 	}
 
-    lib ':kitfox-svg-salamander-1.1.1-p1'
     lib ':idw-gpl-1.6.1'
 
-    maclib 'org.violetlib:vaqua:12'
+    maclib 'org.violetlib:vaqua:13'
 
     runtimeOnly files("${project.buildDir}/emoji/xml")
     emoji 'org.freeplane.emoji:twemoji:12.1.4'
@@ -101,6 +100,7 @@ ext.bundleExports = """\
                     org.freeplane.core.io.xml,
                     org.freeplane.core.resources,
                     org.freeplane.core.resources.components,
+                    org.freeplane.core.awt,
                     org.freeplane.core.ui,
                     org.freeplane.core.ui.components,
                     org.freeplane.core.ui.components.calendar,
@@ -123,6 +123,8 @@ ext.bundleExports = """\
                     org.freeplane.features.cloud,
                     org.freeplane.features.cloud.mindmapmode,
                     org.freeplane.features.commandsearch,
+                    org.freeplane.features.bookmarks.mindmapmode,
+                    org.freeplane.features.bookmarks.mindmapmode.ui,
                     org.freeplane.features.edge,
                     org.freeplane.features.edge.mindmapmode,
                     org.freeplane.features.encrypt,
@@ -243,6 +245,22 @@ task generateIconGroupProperties {
         props.store(System.out, null)
     }
 }
+
+task copyLauncherImages(type: Copy) {
+    from('src/editor/resources/images/') {
+        include('Freeplane_frame_icon_32x32.png')
+        rename('Freeplane_frame_icon_32x32.png', 'freeplane.png')
+    }
+
+    from('src/editor/resources/images/') {
+        include('Freeplane_frame_icon_256x256.png')
+        rename('Freeplane_frame_icon_256x256.png', 'freeplane256.png')
+    }
+    into(globalBin)
+}
+
+build.dependsOn copyLauncherImages
+
 task copyFlatLafDll(type: Copy) {
     def dependencyFile = configurations.lib.find { it.name.startsWith('flatlaf-')}
     from zipTree(dependencyFile)

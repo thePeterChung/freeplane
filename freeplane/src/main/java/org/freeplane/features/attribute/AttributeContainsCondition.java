@@ -19,11 +19,13 @@
  */
 package org.freeplane.features.attribute;
 
-import org.freeplane.core.util.TextUtils;
+import java.awt.FontMetrics;
+import java.util.List;
+
+import javax.swing.Icon;
+
 import org.freeplane.features.filter.StringMatchingStrategy;
-import org.freeplane.features.filter.StringMatchingStrategy.Type;
 import org.freeplane.features.filter.condition.ASelectableCondition;
-import org.freeplane.features.filter.condition.ConditionFactory;
 import org.freeplane.features.filter.condition.StringConditionAdapter;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.text.TextController;
@@ -101,6 +103,11 @@ public class AttributeContainsCondition extends StringConditionAdapter {
 	protected String createDescription() {
 		return createDescription(attribute.toString(), containsDescription(), value);
 	}
+
+    @Override
+    protected List<Icon> createRenderedIcons(FontMetrics fontMetrics) {
+        return createRenderedIcons(attribute.toString(), containsOperator(), value, fontMetrics);
+    }
 
 	@Override
 	public void fillXML(final XMLElement child) {

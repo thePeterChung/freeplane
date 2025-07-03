@@ -1,5 +1,7 @@
 package org.freeplane.features.icon.factory;
 
+import java.awt.Component;
+import java.awt.Font;
 import java.net.URL;
 import java.util.WeakHashMap;
 
@@ -29,12 +31,12 @@ class GraphicIconFactory implements IconFactory {
 
 	@Override
 	public Icon getIcon(final UIIcon uiIcon) {
-		return getIcon(uiIcon.getUrl(), DEFAULT_UI_ICON_HEIGTH);
+		return getIcon(uiIcon.getUrl(), DEFAULT_UI_ICON_HEIGHT);
 	}
 
 	@Override
 	public Icon getIcon(final URL url) {
-		return getIcon(url, DEFAULT_UI_ICON_HEIGTH);
+		return getIcon(url, DEFAULT_UI_ICON_HEIGHT);
 	}
 
 	private String createCacheKey(final URL url, final int heightPixels) {
@@ -69,13 +71,13 @@ class GraphicIconFactory implements IconFactory {
 		}
 		return result;
 	}
-	
-	
+
+
 
 	@Override
 	public void registerIcon(Icon icon, URL url) {
 		ICON_URLS.put(icon, url);
-		
+
 	}
 
 	@Override
@@ -93,5 +95,17 @@ class GraphicIconFactory implements IconFactory {
 		else
 			throw new IllegalArgumentException("unknown icon");
 	}
+
+	@Override
+	public  Icon getScaledIcon(final Icon icon, final Component component) {
+		if(!canScaleIcon(icon))
+			return icon;
+		final Font font = component.getFont();
+		final int fontHeight = component.getFontMetrics(font).getHeight();
+		final Quantity<LengthUnit> iconHeight = new Quantity<LengthUnit>(fontHeight, LengthUnit.px);
+		Icon scaledIcon = getScaledIcon(icon, iconHeight);
+		return scaledIcon;
+	}
+
 
 }

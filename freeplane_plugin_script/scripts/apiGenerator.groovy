@@ -48,6 +48,8 @@ import org.freeplane.api.TextWritingDirection
 
 import org.freeplane.api.Script
 
+import org.freeplane.api.swing.JFileChooser
+
 import org.freeplane.core.resources.ResourceController
 import org.freeplane.core.ui.components.UITools
 import org.freeplane.core.util.FreeplaneVersion
@@ -56,6 +58,7 @@ import org.freeplane.core.util.LogUtils
 import org.freeplane.core.util.TextUtils
 import org.freeplane.launcher.Launcher
 import org.freeplane.plugin.script.FreeplaneScriptBaseClass
+import org.freeplane.plugin.script.GroovyStaticImports
 import org.freeplane.plugin.script.proxy.Convertible
 import org.freeplane.plugin.script.proxy.Proxy
 import org.freeplane.plugin.script.proxy.ScriptUtils
@@ -115,7 +118,7 @@ def makeApi(Proxy.Node node, Class clazz) {
         }.each {
             addField(memberMap, it, clazz);
         }
-    
+
         clazz.getMethods().findAll {
             it.declaringClass == clazz || it.declaringClass.simpleName.endsWith('RO') ||
                     it.declaringClass.getPackage().name == org.freeplane.api.Node.class.getPackage().name
@@ -218,11 +221,10 @@ def addMethod(Map<String, Map<String, Object>> memberMap, Method method) {
 }
 
 def addField(Map<String, Map<String, Object>> memberMap, Field field, Class clazz) {
-    def propertyMap = getOrCreatePropertiesMap(memberMap, formatFieldKey(field))    
+    def propertyMap = getOrCreatePropertiesMap(memberMap, formatFieldKey(field))
     propertyMap['enumConstant'] = field.isEnumConstant()
     propertyMap['return_type'] = field.getType()
     propertyMap['name'] = field.getName()
-    propertyMap['value'] = clazz.getProperties().get(field.getName())
 }
 
 def formatFieldKey(Field field){
@@ -230,9 +232,9 @@ def formatFieldKey(Field field){
 }
 
 def formatField(Map att){
-    return "<html><body><b>${formatReturnType(att['return_type'] )}.${att['name']}</b> =   ${att['value']}</body></html>".toString()
+    return "<html><body><b>${formatReturnType(att['return_type'] )}.${att['name']}</b></body></html>".toString()
 }
- 
+
 def formatProperty(String property, String type, String mode) {
     return "<html><body><b>${property}</b>: ${type} (${mode})</body></html>".toString()
     // Plain text:
@@ -420,8 +422,11 @@ makeApi(utils, FreeplaneScriptBaseClass.class)
 makeApi(utils, UITools.class)
 makeApi(utils, UITools.Defaults.class)
 makeApi(utils, UITools.InsertEolAction.class)
+//org.freeplane.api.swing
+makeApi(utils, JFileChooser.class)
 //org.freeplane.core.util
 makeApi(utils, LogUtils.class)
+makeApi(utils, GroovyStaticImports.class)
 makeApi(utils, HtmlUtils.class)
 makeApi(utils, HtmlUtils.IndexPair.class)
 makeApi(utils, TextUtils.class)

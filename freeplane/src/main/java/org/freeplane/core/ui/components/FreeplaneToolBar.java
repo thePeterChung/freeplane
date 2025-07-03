@@ -42,6 +42,7 @@ import org.freeplane.core.util.Compat;
  * @author Stefan Zechmeister
  */
 public class FreeplaneToolBar extends JToolBar {
+	public static final int FLOATING_HORIZONTAL = 2;
 	protected static Insets nullInsets = new Insets(0, 0, 0, 0);
 
 	private static final GridBagConstraints separatorConstraints = new GridBagConstraints();
@@ -57,14 +58,16 @@ public class FreeplaneToolBar extends JToolBar {
 	 */
 	private static final long serialVersionUID = 1L;
 	private boolean disablesFocus;
+	private boolean reducesButtonSize;
 
 	public FreeplaneToolBar(int orientation) {
 		this(null, orientation);
 	}
 
 	public FreeplaneToolBar(final String name, final int orientation) {
-		super(name, orientation);
+		super(name, orientation == FLOATING_HORIZONTAL ? HORIZONTAL : orientation);
 		this.disablesFocus = true;
+		this.reducesButtonSize = true;
 		this.setMargin(FreeplaneToolBar.nullInsets);
 		setFloatable(false);
 		setRollover(true);
@@ -72,8 +75,12 @@ public class FreeplaneToolBar extends JToolBar {
 			GridBagLayout gridBagLayout = new UnitGridBagLayout();
 			super.setLayout(gridBagLayout);
 			setBorder(BorderFactory.createEmptyBorder());
-		} else
+		} else if(orientation == FLOATING_HORIZONTAL)
+			super.setLayout(ToolbarLayout.floatingHorizontal());
+		else if(orientation == SwingConstants.VERTICAL)
 			super.setLayout(ToolbarLayout.vertical());
+		else
+			throw new IllegalArgumentException();
 		addHierarchyBoundsListener(new HierarchyBoundsListener() {
 			@Override
 			public void ancestorResized(final HierarchyEvent e) {
@@ -92,6 +99,10 @@ public class FreeplaneToolBar extends JToolBar {
 	}
 	public void setDisablesFocus(boolean disablesFocus) {
 		this.disablesFocus = disablesFocus;
+	}
+
+	public void setReducesButtonSize(boolean reducesButtonSize) {
+		this.reducesButtonSize = reducesButtonSize;
 	}
 
 	@Override
@@ -170,8 +181,11 @@ public class FreeplaneToolBar extends JToolBar {
 	}
 
 	private void configureToolbarButton(AbstractButton abstractButton) {
-		configureToolbarButtonText(abstractButton);
-		configureToolbarButtonSize(abstractButton);
+		if(reducesButtonSize) {
+			configureToolbarButtonText(abstractButton);
+			configureToolbarButtonSize(abstractButton);
+		}
+
 		if(disablesFocus) {
             abstractButton.setRequestFocusEnabled(false);
             abstractButton.setFocusable(false);

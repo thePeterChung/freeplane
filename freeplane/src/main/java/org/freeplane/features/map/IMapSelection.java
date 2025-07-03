@@ -35,11 +35,6 @@ public interface IMapSelection {
 		CENTER, LEFT, RIGHT, TOP, BOTTOM,
 		TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT;
 	}
-
-	public void centerNode(final NodeModel node);
-
-	public void centerNodeSlowly(final NodeModel node);
-
 	public void moveNodeTo(final NodeModel node, NodePosition position);
 
 	public void slowlyMoveNodeTo(final NodeModel node, NodePosition position);
@@ -47,6 +42,10 @@ public interface IMapSelection {
 	public NodeModel getSelected();
 
 	public NodeModel getSelectionRoot();
+
+	public NodeModel getSearchRoot();
+
+	public NodeModel getEffectiveSearchRoot();
 
 	public Set<NodeModel> getSelection();
 
@@ -66,11 +65,19 @@ public interface IMapSelection {
 
     public void preserveNodeLocationOnScreen(final NodeModel node, float horizontalPoint, float verticalPoint);
 
+    public void makeTheSelected(final NodeModel node);
+
+    public void makeTheSearchRoot(final NodeModel node);
+
+	public void scrollNodeToVisible(NodeModel node);
+
+	public void scrollNodeToCenter(NodeModel node, boolean slow);
+
+	public void scrollNodeToCenter(NodeModel node);
+
+	public void scrollNodeTreeToVisible(final NodeModel  node, boolean slow);
+
 	public void scrollNodeTreeToVisible(final NodeModel  node);
-
-	public void makeTheSelected(final NodeModel node);
-
-	public void scrollNodeToVisible(NodeModel selected);
 
 	public void selectAsTheOnlyOneSelected(final NodeModel node);
 
@@ -79,8 +86,6 @@ public interface IMapSelection {
 	public void selectContinuous(final NodeModel node);
 
 	public void selectRoot();
-
-	public void setSiblingMaxLevel(int nodeLevel);
 
 	public int size();
 

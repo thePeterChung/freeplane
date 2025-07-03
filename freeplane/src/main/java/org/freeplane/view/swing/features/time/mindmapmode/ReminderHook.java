@@ -194,7 +194,9 @@ public class ReminderHook extends PersistentNodeHook implements IExtension {
 	private void registerTooltipProvider() {
 		modeController.addToolTipProvider(REMINDER_TOOLTIP, new ITooltipProvider() {
 			@Override
-			public String getTooltip(ModeController modeController, NodeModel node, Component view) {
+			public String getTooltip(ModeController modeController, NodeModel node, Component view, TooltipTrigger tooltipTrigger) {
+				if(tooltipTrigger == TooltipTrigger.LINK)
+					return null;
 				final ReminderExtension model = ReminderExtension.getExtension(node);
 				if(model == null)
 					return null;
@@ -234,13 +236,15 @@ public class ReminderHook extends PersistentNodeHook implements IExtension {
 		final JScrollPane timeScrollPane = new JScrollPane(timePanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
 		    JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 		UITools.setScrollbarIncrement(timeScrollPane);
-		tabs.add(TextUtils.getText("calendar_panel"), timeScrollPane);
+		tabs.addTab("", ResourceController.getResourceController().getIcon("/images/panelTabs/calendarTab.svg?useAccentColor=true"),
+		        timeScrollPane, TextUtils.getText("calendar_panel"));
+
     }
 
 	@Override
 	public void add(final NodeModel node, final IExtension extension) {
 		final ReminderExtension reminder = (ReminderExtension) extension;
-		reminder.scheduleTimer();
+		reminder.reminderAdded();
 		super.add(node, extension);
 	}
 
@@ -269,6 +273,16 @@ public class ReminderHook extends PersistentNodeHook implements IExtension {
 		return ReminderExtension.class;
 	}
 
+	@Override
+	protected IExtension toggle(NodeModel node, IExtension extension) {
+		IExtension toggledExtension = super.toggle(node, extension);
+		if(node.containsExtension(getExtensionClass()))
+			node.putExtension(ClockState.CLOCK_VISIBLE);
+		else
+			node.removeExtension(ClockState.class);
+		Controller.getCurrentModeController().getMapController().nodeRefresh(node);
+		return toggledExtension;
+	}
 	@Override
 	public void remove(final NodeModel node, final IExtension extension) {
 		final ReminderExtension reminderExtension = (ReminderExtension) extension;

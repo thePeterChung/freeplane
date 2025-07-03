@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import javax.swing.Action;
 import javax.swing.JComponent;
@@ -75,6 +76,7 @@ import org.freeplane.main.addons.AddOnsController;
 import org.freeplane.n3.nanoxml.XMLException;
 import org.freeplane.n3.nanoxml.XMLParseException;
 import org.freeplane.view.swing.map.NodeView;
+import org.freeplane.view.swing.ui.MouseEventActor;
 /**
  * @author Dimitry Polivaev
  */
@@ -395,24 +397,36 @@ implements IExtension, NodeChangeAnnouncer{
 
 
 	void scrollNodeTreeAfterUnfold(final NodeModel node) {
-	    scrollNodeTree(node, "scrollOnUnfold");
+	    final IMapSelection selection = Controller.getCurrentController().getSelection();
+		if (shouldAutoscroll("scrollOnUnfold")) {
+			selection.scrollNodeTreeToVisible(node);
+		} else
+			selection.scrollNodeToVisible(node);
 	}
 
 	public void scrollNodeTreeAfterSelect(final NodeModel node) {
-	    scrollNodeTree(node, "scrollOnSelect");
+		final boolean shouldCenterNode = shouldAutoscroll("center_selected_node");
+		final boolean shouldScrollSubtree = shouldAutoscroll("scrollOnSelect");
+		final IMapSelection selection = Controller.getCurrentController().getSelection();
+		if (shouldCenterNode) {
+			selection.scrollNodeToCenter(node);
+			if (shouldScrollSubtree)
+				selection.scrollNodeTreeToVisible(node);
+		}
+		else if (shouldScrollSubtree) {
+			selection.scrollNodeTreeToVisible(node);
+		}
+		else
+			selection.scrollNodeToVisible(node);
 	}
 
-	private void scrollNodeTree(final NodeModel node, String propertyName) {
-    if (ResourceController.getResourceController().getBooleanProperty(propertyName)) {
-    	SwingUtilities.invokeLater(new Runnable() {
-    		@Override
-    		public void run() {
-    			Controller.getCurrentController().getSelection().scrollNodeTreeToVisible(node);
-    		}
-    	});
-
-    }
-}
+	private boolean shouldAutoscroll(String propertyName) {
+		ResourceController resourceController = ResourceController.getResourceController();
+		final boolean shouldAutoscroll = resourceController.getBooleanProperty(propertyName)
+				&& !(MouseEventActor.INSTANCE.isActive()
+						&& resourceController.getBooleanProperty("autoscroll_disabled_for_mouse_interaction"));
+		return shouldAutoscroll;
+	}
 
 	public void setFolded(final NodeModel node, final boolean fold, Filter filter) {
 		if(!fold || node.isRoot())
@@ -441,20 +455,24 @@ implements IExtension, NodeChangeAnnouncer{
     }
 
 
-
-
-    public void toggleFoldedAndScroll(Filter filter, NodeModel selected,
-            List<NodeModel> childNodes) {
+    public void toggleFoldedAndScroll(NodeModel node, List<NodeModel> childNodes,
+            Filter filter) {
         boolean unfolded = toggleFolded(filter, childNodes);
         if(unfolded)
-            scrollNodeTreeAfterUnfold(selected);
+            scrollNodeTreeAfterUnfold(node);
+		else {
+			final NodeModel node1 = node;
+			Controller.getCurrentController().getSelection().scrollNodeToVisible(node1);
+		}
     }
 
     public void toggleFoldedAndScroll(final NodeModel node, Filter filter){
         if(canBeUnfoldedOnCurrentView(node, filter))
             unfoldAndScroll(node, filter);
-        else
-            fold(node);
+		else {
+			fold(node);
+			Controller.getCurrentController().getSelection().scrollNodeToVisible(node);
+		}
     }
 
 	public void unfold(final NodeModel node, Filter filter) {
@@ -614,7 +632,7 @@ implements IExtension, NodeChangeAnnouncer{
 
 
 	public void centerNode(final NodeModel node) {
-		Controller.getCurrentController().getSelection().centerNode(node);
+		Controller.getCurrentController().getSelection().scrollNodeToCenter(node);
 	}
 
 	public List<NodeModel> childrenFolded(final NodeModel node) {
@@ -735,13 +753,17 @@ implements IExtension, NodeChangeAnnouncer{
 		final IMapChangeListener[] list = mapChangeListeners.toArray(new IMapChangeListener[]{});
 		nodeDeletionEvent.parent.fireNodeRemoved(list, nodeDeletionEvent);
 		NodeModel node = nodeDeletionEvent.node;
-		node.getMap().unregistryNodes(node);
+		final MapModel map = node.getMap();
+		map.fireNodeDeletionEvent(nodeDeletionEvent);
+		map.unregistryNodes(node);
 	}
 
 	protected void fireNodeInserted(final NodeModel parent, final NodeModel child, final int index) {
 	    sortMapChangeListeners();
-		parent.getMap().registryNodeRecursive(child);
+		final MapModel map = parent.getMap();
+		map.registryNodeRecursive(child);
 		final IMapChangeListener[] list = mapChangeListeners.toArray(new IMapChangeListener[]{});
+		map.fireNodeInsertionEvent(parent, child, index);
 		parent.fireNodeInserted(list, child, index);
 	}
 
@@ -1193,7 +1215,7 @@ implements IExtension, NodeChangeAnnouncer{
             else {
                 mapViewManager.addMapViewChangeListener(new IMapViewChangeListener() {
                     @Override
-                    public void afterViewCreated(Component oldView, Component newView) {
+                    public void afterViewDisplayed(Component oldView, Component newView) {
                         mapViewManager.removeMapViewChangeListener(this);
                         select(node);
                     }
@@ -1267,7 +1289,7 @@ implements IExtension, NodeChangeAnnouncer{
 
 	public static Side suggestNewChildSide(NodeModel target, final Side sideArgument) {
 		final Side side;
-		if (sideArgument == Side.AS_SIBLING) {
+		if (sideArgument.isSibling()) {
 			side = target.getSide();
 		}
 		else{

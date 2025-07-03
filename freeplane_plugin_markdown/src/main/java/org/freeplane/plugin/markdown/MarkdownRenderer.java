@@ -1,5 +1,7 @@
 package org.freeplane.plugin.markdown;
 
+import java.awt.AWTEvent;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.event.KeyEvent;
@@ -29,6 +31,7 @@ import org.freeplane.features.text.mindmapmode.SourceTextEditorUIConfigurator;
 
 import io.github.gitbucket.markedj.Marked;
 import io.github.gitbucket.markedj.Options;
+import io.github.gitbucket.markedj.extension.Extension;
 
 public class MarkdownRenderer extends AbstractContentTransformer implements IEditBaseCreator {
 
@@ -50,9 +53,13 @@ public class MarkdownRenderer extends AbstractContentTransformer implements IEdi
 		options = createMarkdownOptions();
 	}
 
+	public void addExtension(Extension extension) {
+		options.addExtension(extension);
+	}
+
 	@Override
 	public Object transformContent(NodeModel node,
-			Object nodeProperty, Object content, TextController textController, Mode mode)
+			Object nodeProperty, Object content, TextController textController, Mode mode, Component component)
 			throws TransformationException {
 	    if(mode == Mode.TEXT)
 	        return content;
@@ -105,8 +112,8 @@ public class MarkdownRenderer extends AbstractContentTransformer implements IEdi
 
     private EditNodeBase createEditor(NodeModel node, IEditControl editControl,
             JEditorPane textEditor) {
-        final KeyEvent firstKeyEvent = MTextController.getController().getEventQueue().getFirstEvent();
-		final EditNodeDialog editNodeDialog = new EditNodeDialog(node, firstKeyEvent, false, editControl, false, textEditor);
+        final AWTEvent firstEvent = MTextController.getController().getEventQueue().getFirstEvent();
+		final EditNodeDialog editNodeDialog = new EditNodeDialog(node, firstEvent, false, editControl, false, textEditor);
 		editNodeDialog.setTitle(TextUtils.getText("markdown_editor"));
 		return editNodeDialog;
     }

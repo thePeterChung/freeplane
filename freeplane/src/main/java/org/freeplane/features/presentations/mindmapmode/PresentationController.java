@@ -21,6 +21,7 @@ import org.freeplane.core.ui.components.UITools;
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.highlight.HighlightController;
 import org.freeplane.features.highlight.NodeHighlighter;
+import org.freeplane.features.map.IMapSelection;
 import org.freeplane.features.map.IMapSelectionListener;
 import org.freeplane.features.map.MapModel;
 import org.freeplane.features.map.NodeModel;
@@ -51,11 +52,12 @@ public class PresentationController implements IExtension{
 		final PresentationState presentationState = presentationController.presentationState;
 		new PresentationPngExporter.ActionInstaller().installActions(modeController, presentationState);
 		final JTabbedPane tabs = UITools.getFreeplaneTabbedPanel();
-		tabs.add(TextUtils.getText("presentation_panel"), presentationController.createPanel());
+        tabs.addTab("", ResourceController.getResourceController().getIcon("/images/panelTabs/presentationTab.svg?useAccentColor=true"),
+                presentationController.createPanel(), TextUtils.getText("presentation_panel"));
 		highlightController.addNodeHighlighter(new NodeHighlighter() {
 
 			@Override
-			public boolean isNodeHighlighted(NodeModel node, boolean isPrinting) {
+			public boolean isNodeHighlighted(NodeModel node, IMapSelection selection, boolean isPrinting) {
 				return !isPrinting && presentationState.shouldHighlightNodeContainedOnSlide(node);
 			}
 
@@ -70,7 +72,7 @@ public class PresentationController implements IExtension{
 		highlightController.addNodeHighlighter(new NodeHighlighter() {
 
 			@Override
-			public boolean isNodeHighlighted(NodeModel node, boolean isPrinting) {
+			public boolean isNodeHighlighted(NodeModel node, IMapSelection selection, boolean isPrinting) {
 				return !isPrinting && presentationState.shouldHighlightNodeFoldedOnSlide(node);
 			}
 

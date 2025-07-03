@@ -39,7 +39,6 @@ import org.freeplane.features.map.mindmapmode.MMapController;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.ModeController;
 import org.freeplane.features.mode.mindmapmode.MModeController;
-import org.freeplane.features.styles.MapStyleModel;
 import org.freeplane.features.styles.MapViewLayout;
 import org.freeplane.view.swing.map.MapView;
 import org.freeplane.view.swing.map.NodeView;
@@ -109,7 +108,7 @@ public class MMapMouseListener extends DefaultMapMouseListener{
 
 	public void mousePressed(final MouseEvent e) {
 		super.mousePressed(e);
-		if(e.isPopupTrigger())
+		if(Compat.isPopupTrigger(e))
 			return;
 		final MapView mapView = (MapView) e.getComponent();
 		if(mapView.getClientProperty(Connectors.class) != null)

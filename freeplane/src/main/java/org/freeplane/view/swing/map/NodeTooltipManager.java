@@ -15,11 +15,14 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionListener;
 import java.lang.ref.WeakReference;
 
+import javax.swing.BorderFactory;
 import javax.swing.FocusManager;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JPopupMenu;
 import javax.swing.JToolTip;
+import javax.swing.MenuSelectionManager;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
@@ -40,9 +43,26 @@ import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.ModeController;
 
 public class NodeTooltipManager implements IExtension{
+	public static final String TOOLTIP_LOCATION_ABOVE = "above";
+	public static final String TOOLTIP_LOCATION_PROPERTY = "tooltipLocation";
 	private static final String TOOL_TIP_MANAGER = "toolTipManager.";
 	private static final String TOOL_TIP_MANAGER_INITIAL_DELAY = "toolTipManager.initialDelay";
 	private static final String RESOURCES_SHOW_NODE_TOOLTIPS = "show_node_tooltips";
+	private static final NodeTooltipManager INSTANCE;
+	static {
+	    INSTANCE = new NodeTooltipManager();
+        setTooltipDelays(INSTANCE);
+        UIManager.put("PopupMenu.consumeEventOnClose", Boolean.FALSE);
+        ResourceController.getResourceController().addPropertyChangeListener(new IFreeplanePropertyListener() {
+            @Override
+            public void propertyChanged(final String propertyName, final String newValue, final String oldValue) {
+                if (propertyName.startsWith(TOOL_TIP_MANAGER)) {
+                    setTooltipDelays(INSTANCE);
+                }
+            }
+        });
+	}
+
 	private final Timer enterTimer;
 	private final Timer exitTimer;
 	private String toolTipText;
@@ -56,8 +76,13 @@ public class NodeTooltipManager implements IExtension{
 	private JToolTip tip;
 	final private ComponentMouseListener componentMouseListener;
 	private WeakReference<Component> focusOwnerRef;
-	private boolean mouseOverComponent;
+	private MouseInsideListener mouseInsideContentListener;
 	private MouseInsideListener mouseInsideTooltipListener;
+    private Point preferredToolTipLocation;
+
+    public static NodeTooltipManager getSharedInstance(){
+        return INSTANCE;
+    }
 
 	public static NodeTooltipManager getSharedInstance(ModeController modeController){
 		{
@@ -66,32 +91,21 @@ public class NodeTooltipManager implements IExtension{
 				return instance;
 			}
 		}
-		final NodeTooltipManager instance = new NodeTooltipManager();
-		setTooltipDelays(instance);
-		UIManager.put("PopupMenu.consumeEventOnClose", Boolean.FALSE);
-		ResourceController.getResourceController().addPropertyChangeListener(new IFreeplanePropertyListener() {
-			@Override
-			public void propertyChanged(final String propertyName, final String newValue, final String oldValue) {
-				if (propertyName.startsWith(TOOL_TIP_MANAGER)) {
-					setTooltipDelays(instance);
-				}
-			}
-		});
 		IMapChangeListener mapChangeListener = new IMapChangeListener() {
 
 			@Override
             public void onNodeDeleted(NodeDeletionEvent nodeDeletionEvent) {
-				instance.hideTipWindow();
+				INSTANCE.hideTipWindow();
             }
 
 			@Override
             public void onNodeInserted(NodeModel parent, NodeModel child, int newIndex) {
-				instance.hideTipWindow();
+				INSTANCE.hideTipWindow();
             }
 
 			@Override
             public void onNodeMoved(NodeMoveEvent nodeMoveEvent) {
-				instance.hideTipWindow();
+				INSTANCE.hideTipWindow();
             }
 
 		};
@@ -101,10 +115,10 @@ public class NodeTooltipManager implements IExtension{
 
 			@Override
 			public void onSelect(NodeModel node) {
-				NodeView view = (NodeView) SwingUtilities.getAncestorOfClass(NodeView.class, instance.insideComponent);
+				NodeView view = (NodeView) SwingUtilities.getAncestorOfClass(NodeView.class, INSTANCE.insideComponent);
 				if(view != null && node.equals(view.getNode()))
 					return;
-				instance.hideTipWindow();
+				INSTANCE.hideTipWindow();
 			}
 
 			@Override
@@ -112,8 +126,8 @@ public class NodeTooltipManager implements IExtension{
 			}
 		};
 		mapController.addNodeSelectionListener(nodeSelectionListener);
-		modeController.addExtension(NodeTooltipManager.class, instance);
-		return instance;
+		modeController.addExtension(NodeTooltipManager.class, INSTANCE);
+		return INSTANCE;
 	}
 	private static void setTooltipDelays(NodeTooltipManager instance) {
 		final int initialDelay = ResourceController.getResourceController().getIntProperty(
@@ -121,12 +135,11 @@ public class NodeTooltipManager implements IExtension{
 		instance.setInitialDelay(initialDelay);
     }
 	private NodeTooltipManager() {
-		enterTimer = new Timer(750, new insideTimerAction());
+		enterTimer = new Timer(750, new InsideTimerAction());
 		enterTimer.setRepeats(false);
-		exitTimer = new Timer(150, new exitTimerAction());
+		exitTimer = new Timer(150, new ExitTimerAction());
 		exitTimer.setRepeats(false);
 		componentMouseListener = new ComponentMouseListener();
-		mouseOverComponent = false;
 	}
 
 	/**
@@ -155,33 +168,63 @@ public class NodeTooltipManager implements IExtension{
 
 	private void showTipWindow() {
 		Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
-		if (insideComponent == null || !insideComponent.isShowing() || focusOwner == null)
+		if (insideComponent == null || !insideComponent.isShowing()
+				|| ((insideComponent instanceof JComboBox && ((JComboBox)insideComponent).isPopupVisible()))
+				|| focusOwner == null)
 			return;
 		tip = insideComponent.createToolTip();
 		tip.setTipText(toolTipText);
 		focusOwnerRef = new WeakReference<Component>(focusOwner);
 		tipPopup = new JPopupMenu();
+		tipPopup.setBorder(BorderFactory.createEmptyBorder());
 		tipPopup.setLayout(new GridLayout(1, 1));
 		tipPopup.add(tip);
 		mouseInsideTooltipListener = new MouseInsideListener(tipPopup);
 		final Rectangle desktopBounds = UITools.getAvailableScreenBounds(insideComponent);
 		final Dimension popupPreferredSize = tipPopup.getPreferredSize();
-		final Point desiredLocation = new Point(0, insideComponent.getHeight());
-		SwingUtilities.convertPointToScreen(desiredLocation, insideComponent);
-		int popupAllowedHeight =  desktopBounds.y + desktopBounds.height - desiredLocation.y;
+
+		Point desiredLocation;
+		int popupAllowedHeight;
+
+		if (preferredToolTipLocation != null) {
+			desiredLocation = preferredToolTipLocation;
+			final Point onScreenLocation = new Point(desiredLocation);
+			SwingUtilities.convertPointToScreen(onScreenLocation, insideComponent);
+			popupAllowedHeight = desktopBounds.y + desktopBounds.height - onScreenLocation.y;
+		} else {
+			// Check if tooltip should be shown above based on client property
+			Object tooltipLocationProperty = insideComponent.getClientProperty(TOOLTIP_LOCATION_PROPERTY);
+			boolean showAbove = TOOLTIP_LOCATION_ABOVE.equals(tooltipLocationProperty);
+
+			if (showAbove) {
+				desiredLocation = new Point(0, -popupPreferredSize.height);
+				final Point onScreenLocation = new Point(desiredLocation);
+				SwingUtilities.convertPointToScreen(onScreenLocation, insideComponent);
+				popupAllowedHeight = onScreenLocation.y - desktopBounds.y;
+			} else {
+				desiredLocation = new Point(0, insideComponent.getHeight() - 1);
+				final Point onScreenLocation = new Point(desiredLocation);
+				SwingUtilities.convertPointToScreen(onScreenLocation, insideComponent);
+				popupAllowedHeight = desktopBounds.y + desktopBounds.height - onScreenLocation.y;
+			}
+		}
+
 		if(popupAllowedHeight > 0) {
 			Dimension popupSize = new Dimension(
 				popupPreferredSize.width,
 				Math.min(popupAllowedHeight, popupPreferredSize.height));
 			tipPopup.setPreferredSize(popupSize);
-			tipPopup.show(insideComponent, 0, insideComponent.getHeight());
-			focusOwner.requestFocusInWindow();
-			exitTimer.start();
+			tipPopup.show(insideComponent, desiredLocation.x, desiredLocation.y);
+			SwingUtilities.invokeLater(() -> {
+				focusOwner.requestFocus();
+				exitTimer.start();
+			});
 		}
 	}
 
-	private void hideTipWindow() {
+	public void hideTipWindow() {
 		insideComponent = null;
+		preferredToolTipLocation = null;
 		toolTipText = null;
 		mouseEvent = null;
 		if (tipPopup != null && tip != null) {
@@ -196,7 +239,9 @@ public class NodeTooltipManager implements IExtension{
 			if(component != null)
 				component.requestFocusInWindow();
 			tipPopup = null;
-			mouseInsideTooltipListener = null;
+			mouseInsideTooltipListener.disconnect();
+			mouseInsideContentListener.disconnect();
+			mouseInsideTooltipListener = mouseInsideContentListener = null;
 			tip = null;
 			focusOwnerRef = null;
 			enterTimer.stop();
@@ -245,8 +290,6 @@ public class NodeTooltipManager implements IExtension{
 		}
 		@Override
         public void mouseExited(MouseEvent event) {
-			if(insideComponent == event.getComponent())
-				mouseOverComponent = false;
 		}
 
 		@Override
@@ -270,26 +313,31 @@ public class NodeTooltipManager implements IExtension{
             return;
         }
 		if(insideComponent == component){
-			mouseOverComponent = true;
+			mouseEvent = event;
 			return;
 		}
 		hideTipWindow();
-		insideComponent = component;
-		mouseEvent = event;
-		if(ResourceController.getResourceController().getBooleanProperty(RESOURCES_SHOW_NODE_TOOLTIPS))
-			enterTimer.restart();
+		if(ResourceController.getResourceController().getBooleanProperty(RESOURCES_SHOW_NODE_TOOLTIPS)
+		        || null == SwingUtilities.getAncestorOfClass(NodeView.class, component)) {
+		    insideComponent = component;
+			mouseInsideContentListener = new MouseInsideListener(insideComponent instanceof MainView ? ((MainView)insideComponent).getNodeView().getContent() : insideComponent);
+			mouseInsideContentListener.mouseEntered(event);
+		    preferredToolTipLocation = component.getToolTipLocation(event);
+		    mouseEvent = event;
+            enterTimer.restart();
+        }
 	}
 
 	protected boolean isMouseOverComponent() {
-		return mouseOverComponent;
+		return mouseInsideContentListener.isMouseInside();
 	}
 
 
-	private class insideTimerAction implements ActionListener {
+	private class InsideTimerAction implements ActionListener {
 		@Override
 		public void actionPerformed(ActionEvent e) {
 			if (insideComponent != null){
-				if (isMouseOverComponent() && !editorActive()) {
+				if (isMouseOverComponent() && !editorActive() && ! isPopupMenuOpen()) {
 					// Lazy lookup
 					if (toolTipText == null && mouseEvent != null) {
 						toolTipText = insideComponent.getToolTipText(mouseEvent);
@@ -303,12 +351,18 @@ public class NodeTooltipManager implements IExtension{
 			}
 		}
 
+		private boolean isPopupMenuOpen() {
+			boolean popupOpen = MenuSelectionManager.defaultManager().getSelectedPath().length > 0;
+			return popupOpen;
+		}
+
 		private boolean editorActive() {
-			return KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner() instanceof JTextComponent;
+			Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+            return focusOwner instanceof JTextComponent && SwingUtilities.getAncestorOfClass(NodeView.class, focusOwner) != null;
 		}
 	}
 
-	private class exitTimerAction implements ActionListener {
+	private class ExitTimerAction implements ActionListener {
 		@Override
 		public void actionPerformed(ActionEvent e) {
 			if(tip == null || insideComponent == null){

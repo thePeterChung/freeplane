@@ -9,6 +9,7 @@ import java.awt.event.MouseWheelListener;
 import javax.swing.SwingUtilities;
 
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.util.Compat;
 import org.freeplane.view.swing.map.MapView;
 
 public class DefaultNodeMouseWheelListener  implements MouseWheelListener{
@@ -23,10 +24,10 @@ public class DefaultNodeMouseWheelListener  implements MouseWheelListener{
 		final Point location = new Point(e.getX(), e.getY());
 		final Container map = SwingUtilities.getAncestorOfClass(MapView.class, source);
 		UITools.convertPointToAncestor(source, location, map);
-		final MouseWheelEvent mapWheelEvent = new MouseWheelEvent(map, e.getID(), e.getWhen(), e.getModifiers() | e.getModifiersEx(), 
-				location.x, location.y, e.getXOnScreen(), e.getYOnScreen(), 
-				e.getClickCount(), e.isPopupTrigger(), e.getScrollType(),
-				e.getScrollAmount(), e.getWheelRotation());
+		final MouseWheelEvent mapWheelEvent = new MouseWheelEvent(map, e.getID(), e.getWhen(), e.getModifiers() | e.getModifiersEx(),
+				location.x, location.y, e.getXOnScreen(), e.getYOnScreen(),
+				e.getClickCount(), Compat.isPopupTrigger(e), e.getScrollType(),
+				e.getScrollAmount(), e.getWheelRotation(), e.getPreciseWheelRotation());
 		mapMouseWheelListener.mouseWheelMoved(mapWheelEvent);
 	}
 

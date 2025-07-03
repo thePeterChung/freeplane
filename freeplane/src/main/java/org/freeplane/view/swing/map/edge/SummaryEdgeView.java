@@ -45,10 +45,6 @@ public class SummaryEdgeView extends EdgeView {
 	@Override
 	protected void draw(final Graphics2D g) {
 		final Shape graph = update();
-		final Color color = getColor();
-		g.setColor(color);
-		final Stroke stroke = getStroke();
-		g.setStroke(stroke);
 		g.draw(graph);
 	}
 
@@ -59,24 +55,24 @@ public class SummaryEdgeView extends EdgeView {
 		final int childXctrl = getMap().getZoomed(sign * SummaryEdgeView.CHILD_XCTRL);
 		final GeneralPath path = new GeneralPath(Path2D.WIND_EVEN_ODD, 5);
 		if(getSource().usesHorizontalLayout()) {
-			final int startY; 
+			final int startY;
 			if(isTopOrLeft)
-				startY = Math.min(start.y, end.y - childXctrl);
+				startY = Math.min(shapeStart.y, end.y - childXctrl);
 			else
-				startY = Math.max(start.y, end.y - childXctrl);
-			path.moveTo(start.x, startY);
-			path.lineTo(start.x, startY + xctrl);
-			path.curveTo(start.x, startY + 2 * xctrl, end.x, startY, end.x, end.y);
+				startY = Math.max(shapeStart.y, end.y - childXctrl);
+			path.moveTo(shapeStart.x, startY);
+			path.lineTo(shapeStart.x, startY + xctrl);
+			path.curveTo(shapeStart.x, startY + 2 * xctrl, end.x, startY, end.x, end.y);
 		}
 		else {
-			final int startX; 
+			final int startX;
 			if(isTopOrLeft)
-				startX = Math.min(start.x, end.x - childXctrl);
+				startX = Math.min(shapeStart.x, end.x - childXctrl);
 			else
-				startX = Math.max(start.x, end.x - childXctrl);
-			path.moveTo(startX, start.y);
-			path.lineTo(startX + xctrl, start.y);
-			path.curveTo(startX + 2 * xctrl, start.y, startX, end.y, end.x, end.y);
+				startX = Math.max(shapeStart.x, end.x - childXctrl);
+			path.moveTo(startX, shapeStart.y);
+			path.lineTo(startX + xctrl, shapeStart.y);
+			path.curveTo(startX + 2 * xctrl, shapeStart.y, startX, end.y, end.x, end.y);
 
 		}
 		return path;

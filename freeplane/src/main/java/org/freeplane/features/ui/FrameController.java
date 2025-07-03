@@ -55,14 +55,13 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.ComboBoxEditor;
 import javax.swing.Icon;
-import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JRootPane;
-import javax.swing.KeyStroke;
 import javax.swing.LookAndFeel;
+import javax.swing.PopupFactory;
 import javax.swing.RootPaneContainer;
 import javax.swing.Timer;
 import javax.swing.ToolTipManager;
@@ -106,7 +105,6 @@ abstract public class FrameController implements ViewController {
 	public static final String VAQUA_LAF_NAME = "VAqua";
 	public static final String VAQUA_LAF_CLASS_NAME = "org.violetlib.aqua.AquaLookAndFeel";
     private static final String DARCULA_LAF_CLASS_NAME = "com.bulenkov.darcula.DarculaLaf";
-    private static final String MOTIF_LAF__CLASS_NAME = "com.sun.java.swing.plaf.motif.MotifLookAndFeel";
 	private static final double DEFAULT_SCALING_FACTOR = 0.8;
 	private static final String MENU_ITEM_FONT_SIZE_PROPERTY = "menuItemFontSize";
 
@@ -212,6 +210,7 @@ abstract public class FrameController implements ViewController {
 		controller.addAction(new ToggleMenubarAction(this));
 		controller.addAction(new ToggleScrollbarsAction(this));
 		controller.addAction(new ToggleMapOverviewAction(this));
+		controller.addAction(new ToggleBookmarksToolbarAction(this));
 		controller.addAction(new ToggleToolbarAction("ToggleToolbarAction", "/main_toolbar"));
 		controller.addAction(new ToggleToolbarAction("ToggleStatusAction", "/status"));
 		addStatusInfo(ResourceController.OBJECT_TYPE, null, null);
@@ -273,6 +272,11 @@ abstract public class FrameController implements ViewController {
 	@Override
 	public boolean isMapOverviewVisible() {
 		return isComponentVisible("mapOverview");
+	}
+
+	@Override
+	public boolean isBookmarksToolbarVisible() {
+		return isComponentVisible("bookmarksToolbar");
 	}
 
 	@Override
@@ -462,6 +466,11 @@ abstract public class FrameController implements ViewController {
 	}
 
 	@Override
+	public void setBookmarksToolbarVisible(final boolean visible) {
+		setComponentVisibleProperty("bookmarksToolbar", visible);
+	}
+
+	@Override
 	public void setScrollbarsVisible(final boolean visible) {
 		setComponentVisibleProperty("scrollbars", visible);
 	}
@@ -639,9 +648,11 @@ abstract public class FrameController implements ViewController {
 						UIManager.setLookAndFeel((LookAndFeel) lookAndFeelClass.newInstance());
 						if (userLibClassLoader != uiClassLoader)
 							userLibClassLoader.close();
+						if(PopupFactory.getSharedInstance().getClass().getName().equals("com.formdev.flatlaf.ui.FlatPopupFactory"))
+							PopupFactory.setSharedInstance(basicPopupFactory);
 					}
 					catch (ClassNotFoundException | ClassCastException | InstantiationException e) {
-						LogUtils.warn("Error while setting Look&Feel" + lookAndFeel + ", reverted to default");
+						LogUtils.warn("Error while setting Look&Feel " + lookAndFeel + ", reverted to default");
 						UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 						Controller.getCurrentController().getResourceController().setProperty("lookandfeel", "default");
 					}
@@ -653,7 +664,10 @@ abstract public class FrameController implements ViewController {
 			LogUtils.warn("Error while setting Look&Feel" + lookAndFeel);
 		}
 	}
+	private static final PopupFactory basicPopupFactory;
 	static {
+		UIManager.getInstalledLookAndFeels();
+		OSKeyBindingManager.initialize();
 	    UIManager.addPropertyChangeListener(new PropertyChangeListener() {
 	        @Override
 			public void propertyChange(PropertyChangeEvent event) {
@@ -662,10 +676,10 @@ abstract public class FrameController implements ViewController {
 	          }
 	        }
 	      });
-
+	    basicPopupFactory = new PopupFactory();
 	}
     private static void fixLookAndFeelUI(){
-    	addHotKeysToMotifInputMaps();
+    	OSKeyBindingManager.applyToCurrentLookAndFeel();
     	configureFlatLookAndFeel();
 		UIManager.put("Button.defaultButtonFollowsFocus", Boolean.TRUE);
 		UIManager.put("ComboBox.squareButton", Boolean.FALSE);
@@ -740,50 +754,13 @@ abstract public class FrameController implements ViewController {
         	UIManager.put("Table.showVerticalLines", true);
         	UIManager.put("ComboBox.minimumWidth", 2);
         	UIManager.put("TabbedPane.tabsOverlapBorder", false);
+        	UIManager.put("TabbedPane.rotateTabRuns", false);
         	UIManager.put("EditorPaneUI", NonSelectingFlatEditorPaneUI.class.getName());
          }
         else if(NonSelectingFlatEditorPaneUI.class.getName().equals(UIManager.get("EditorPaneUI"))){
         	UIManager.put("EditorPaneUI", BasicEditorPaneUI.class.getName());
         }
 	}
-
-	private static void addHotKeysToMotifInputMaps() {
-        if(UIManager.getLookAndFeel().getClass().getName().equals(MOTIF_LAF__CLASS_NAME)) {
-            UIDefaults uiDefaults = UIManager.getDefaults();
-            uiDefaults.replaceAll((k, v) -> replaceMotifLazyInputMaps(k, v));
-         }
-    }
-
-	private static Map<String, KeyStroke> keystrokes = new HashMap<>();
-
-    private static Object replaceMotifLazyInputMaps(Object k, Object v) {
-        if(!(v instanceof UIDefaults.LazyInputMap))
-            return v;
-        return new UIDefaults.LazyValue() {
-            @Override
-            public Object createValue(UIDefaults table) {
-                 Object value = ((UIDefaults.LazyInputMap) v).createValue(table);
-                 if (! (value instanceof InputMap))
-                     return value;
-                 InputMap inputMap = (InputMap) value;
-                 KeyStroke keyStrokeControlC = keystrokes.computeIfAbsent("control C", KeyStroke::getKeyStroke);
-                 if(inputMap.get(keyStrokeControlC) != null)
-                     return value;
-                 KeyStroke keyStrokeCopy = keystrokes.computeIfAbsent("COPY", KeyStroke::getKeyStroke);
-                 Object copyValue = inputMap.get(keyStrokeCopy);
-                 if(copyValue == null)
-                     return value;
-                 inputMap.put(keyStrokeControlC, copyValue);
-                 KeyStroke keyStrokePaste = keystrokes.computeIfAbsent("PASTE", KeyStroke::getKeyStroke);
-                 KeyStroke keyStrokeControlV = keystrokes.computeIfAbsent("control V", KeyStroke::getKeyStroke);
-                 inputMap.put(keyStrokeControlV, inputMap.get(keyStrokePaste));
-                 KeyStroke keyStrokeCut = keystrokes.computeIfAbsent("CUT", KeyStroke::getKeyStroke);
-                 KeyStroke keyStrokeControlX = keystrokes.computeIfAbsent("control X", KeyStroke::getKeyStroke);
-                 inputMap.put(keyStrokeControlX, inputMap.get(keyStrokeCut));
-                 return inputMap;
-           }
-        };
-    }
 
 	private static void scaleDefaultUIFonts(double scalingFactor) {
 		final UIDefaults uiDefaults = UIManager.getDefaults();
@@ -903,8 +880,6 @@ abstract public class FrameController implements ViewController {
 	public boolean quit() {
 	    final JComponent mapViewComponent = mapViewManager.getMapViewComponent();
 		final boolean allMapsSaved = mapViewManager.saveAllModifiedMaps();
-		if (allMapsSaved)
-		    mapViewManager.onQuitApplication();
 		mapViewManager.changeToMapView(mapViewComponent);
 		return allMapsSaved;
 	}
@@ -940,6 +915,6 @@ abstract public class FrameController implements ViewController {
 
 	@Override
 	public List<? extends Component> getMapViewVector() {
-		return mapViewManager.getMapViewVector();
+		return mapViewManager.getMapViews();
 	}
 }

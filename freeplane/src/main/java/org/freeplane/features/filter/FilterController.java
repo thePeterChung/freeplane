@@ -21,6 +21,7 @@ package org.freeplane.features.filter;
 
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Graphics2D;
@@ -29,6 +30,7 @@ import java.awt.Point;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -40,12 +42,11 @@ import java.io.Writer;
 import java.security.AccessControlException;
 import java.util.Collection;
 import java.util.Vector;
-import java.util.stream.Stream;
-
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.ButtonModel;
 import javax.swing.DefaultComboBoxModel;
+import javax.swing.Icon;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -54,7 +55,6 @@ import javax.swing.JToggleButton;
 import javax.swing.JToolBar;
 import javax.swing.JToolTip;
 import javax.swing.SwingConstants;
-import javax.swing.ToolTipManager;
 import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import javax.swing.event.ChangeEvent;
@@ -67,7 +67,9 @@ import org.freeplane.core.ui.AFreeplaneAction;
 import org.freeplane.core.ui.ButtonModelStateChangeListenerForProperty;
 import org.freeplane.core.ui.SelectableAction;
 import org.freeplane.core.ui.components.FreeplaneToolBar;
+import org.freeplane.core.ui.components.IconListComponent;
 import org.freeplane.core.ui.components.JAutoToggleButton;
+import org.freeplane.core.ui.components.ObjectIcon;
 import org.freeplane.core.ui.components.ToolbarLayout;
 import org.freeplane.core.ui.components.UITools;
 import org.freeplane.core.ui.components.resizer.UIComponentVisibilityDispatcher;
@@ -103,6 +105,7 @@ import org.freeplane.n3.nanoxml.IXMLReader;
 import org.freeplane.n3.nanoxml.StdXMLReader;
 import org.freeplane.n3.nanoxml.XMLElement;
 import org.freeplane.n3.nanoxml.XMLWriter;
+import org.freeplane.view.swing.map.NodeTooltipManager;
 
 /**
  * @author Dimitry Polivaev
@@ -110,7 +113,7 @@ import org.freeplane.n3.nanoxml.XMLWriter;
 public class FilterController implements IExtension, IMapViewChangeListener {
 	public static final Color HIGHLIGHT_COLOR = Color.MAGENTA;
 	public static int TOOLBAR_SIDE = ViewController.TOP;
-	@SuppressWarnings("serial")
+    @SuppressWarnings("serial")
     @SelectableAction(checkOnPopup = true)
 	private class ToggleFilterToolbarAction extends ToggleToolbarAction {
 	    private ToggleFilterToolbarAction(String actionName, String toolbarName) {
@@ -200,7 +203,8 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            applyFilter(true);
+            if(getSelectedCondition() != null)
+                applyFilter(true);
         }
 	}
 
@@ -242,8 +246,13 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		controller.addExtension(FilterController.class, extension);
 		controller.getExtension(HighlightController.class).addNodeHighlighter(new NodeHighlighter() {
 			@Override
-			public boolean isNodeHighlighted(NodeModel node, boolean isPrinting) {
-				return !isPrinting && FilterController.getController(controller).isNodeHighlighted(node);
+			public boolean isNodeHighlighted(NodeModel node, IMapSelection selection, boolean isPrinting) {
+				if (isPrinting)
+					return false;
+			NodeModel searchRoot = selection.getSearchRoot();
+			if(searchRoot != null && node != searchRoot && ! node.isDescendantOf(searchRoot))
+				return false;
+			return FilterController.getController(controller).isNodeHighlighted(node);
 			}
 
 			@Override
@@ -263,7 +272,7 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 	private DefaultConditionRenderer conditionRenderer = null;
 // // 	private final Controller controller;
 	final private FilterChangeListener filterChangeListener;
-	private DefaultComboBoxModel filterConditions;
+	private FilterConditions filterConditions;
 	private final FilterMenuBuilder filterMenuBuilder;
 	private JComponent filterToolbar;
 	private final FilterHistory history;
@@ -356,6 +365,7 @@ public class FilterController implements IExtension, IMapViewChangeListener {
         controller.addAction(new SelectFilteredElementAction(applyToNodes, FilteredElement.NODE));
         controller.addAction(new SelectFilteredElementAction(applyToNodesAndConnectors, FilteredElement.NODE_AND_CONNECTOR));
         controller.addAction(new SelectFilteredElementAction(applyToConnectors, FilteredElement.CONNECTOR));
+        controller.addAction(new SelectSearchRootAction());
 		quickFilterAction = new QuickFilterAction(this, quickEditor);
 		controller.addAction(quickFilterAction);
 		controller.addAction(new QuickAndFilterAction(this, quickEditor));
@@ -548,7 +558,6 @@ public class FilterController implements IExtension, IMapViewChangeListener {
                     selection.selectAsTheOnlyOneSelected(visibleAncestorOrSelf);
             }
         }
-        selection.setSiblingMaxLevel(selection.getSelected().getNodeLevel(filter));
     }
 	void applySelectedViewCondition() {
 		if (getFilterConditions().getSelectedItem() != selectedViewCondition) {
@@ -613,7 +622,9 @@ public class FilterController implements IExtension, IMapViewChangeListener {
         final AbstractButton applyAndFilterBtn = FreeplaneToolBar.createButton(controller.getAction("QuickAndFilterAction"));
         final AbstractButton applyOrFilterBtn = FreeplaneToolBar.createButton(controller.getAction("QuickOrFilterAction"));
         final AbstractButton applyQuickSelectBtn = FreeplaneToolBar.createButton(controller.getAction("QuickFindAllAction"));
-		final AbstractButton applyQuickHighlightBtn = FreeplaneToolBar.createButton(controller.getAction("QuickHighlightAction"));
+        final AbstractButton applyQuickHighlightBtn = FreeplaneToolBar.createButton(controller.getAction("QuickHighlightAction"));
+        final AbstractButton selectSearchRootActionBtn = FreeplaneToolBar.createButton(controller.getAction("SelectSearchRootAction"));
+
 
 		GridBagConstraints constraints = new GridBagConstraints();
 		constraints.anchor = GridBagConstraints.NORTHWEST;
@@ -629,7 +640,8 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		searchOptionPanel.add(applyQuickSelectBtn, constraints);
 		searchOptionPanel.add(applyQuickFilterBtn, constraints);
 		searchOptionPanel.add(applyAndFilterBtn, constraints);
-		searchOptionPanel.add(applyOrFilterBtn, constraints);
+        searchOptionPanel.add(applyOrFilterBtn, constraints);
+        searchOptionPanel.add(selectSearchRootActionBtn, constraints);
 
 		JComponent searchPanel = new FreeplaneToolBar("searchPanel", JToolBar.HORIZONTAL);
 
@@ -653,12 +665,16 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		constraints.gridy =1;
 		constraints.gridwidth =1;
 
-        filterOptionPanel.add(applyToNodesBox, constraints);
-        filterOptionPanel.add(applyToNodesAndConnectorsBox, constraints);
-        filterOptionPanel.add(applyToConnectorsBox, constraints);
 		filterOptionPanel.add(showAncestorsBox, constraints);
 		filterOptionPanel.add(showDescendantsBox, constraints);
 		filterOptionPanel.add(hideMatchingNodesBox, constraints);
+		constraints.weightx = 1;
+		filterOptionPanel.add(new JUnitPanel(), constraints);
+
+		constraints.weightx = 0;
+        filterOptionPanel.add(applyToNodesBox, constraints);
+        filterOptionPanel.add(applyToNodesAndConnectorsBox, constraints);
+        filterOptionPanel.add(applyToConnectorsBox, constraints);
 
 		constraints.weightx = 1;
 		filterOptionPanel.add(new JUnitPanel(), constraints);
@@ -667,16 +683,16 @@ public class FilterController implements IExtension, IMapViewChangeListener {
         filterOptionPanel.add(applyToVisibleBox, constraints);
 		filterOptionPanel.add(reapplyFilterBtn, constraints);
 		filterOptionPanel.add(selectFilteredNodesBtn, constraints);
-		filterOptionPanel.add(filterSelectedBtn, constraints);
 
 		constraints.gridwidth = 1;
 
 		constraints.gridy = 0;
-		filterOptionPanel.add(undoBtn, constraints);
-		filterOptionPanel.add(redoBtn, constraints);
-		constraints.gridy = 1;
+		filterOptionPanel.add(filterSelectedBtn, constraints);
 		filterOptionPanel.add(noFilteringBtn, constraints);
 		filterOptionPanel.add(btnEdit, constraints);
+		constraints.gridy = 1;
+		filterOptionPanel.add(undoBtn, constraints);
+		filterOptionPanel.add(redoBtn, constraints);
 
 
 		final DefaultConditionRenderer toolbarConditionRenderer = new DefaultConditionRenderer(TextUtils.getText("filter_no_filtering"), false);
@@ -697,7 +713,7 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		return filterToolbar;
 	}
 
-    JComboBox createActiveFilterConditionBox() {
+   JComboBox createActiveFilterConditionBox() {
         JComboBox box = new JComboBox(getFilterConditions()){
 				{
 					setMaximumRowCount(10);
@@ -712,24 +728,87 @@ public class FilterController implements IExtension, IMapViewChangeListener {
                 JToolTip tip = new JToolTip() {
                     @Override
                     public void setTipText(String tipText) {
-                        JComponent renderer = (JComponent) conditionRenderer.getCellRendererComponent(activeFilterConditionComboBox.getSelectedItem(), false);
-                        if(renderer.getPreferredSize().width > activeFilterConditionComboBox.getWidth() * 4 / 5) {
-                            renderer.setBorder(BorderFactory.createRaisedBevelBorder());
-                            add(renderer);
-                        }
+                        ASelectableCondition selectedItem = getSelectedFilterCondition();
+                        IconListComponent renderer = selectedItem.getListCellRendererComponent(getFontMetrics(getFont()));
+                        MouseAdapter mouseListener = new MouseAdapter() {
+
+                            @Override
+                            public void mouseClicked(MouseEvent e) {
+                                ASelectableCondition removedCondition = getConditionUnderMouse(e);
+                                if(removedCondition != null && removedCondition != NO_FILTERING) {
+                                    removeCondition(removedCondition);
+                                }
+                            }
+
+                            private ASelectableCondition getConditionUnderMouse(MouseEvent e) {
+                                IconListComponent component = getComponent(e);
+                                Icon icon = component.getIconAt(e.getPoint());
+                                if(icon instanceof ObjectIcon<?>) {
+                                    ASelectableCondition condition = ((ObjectIcon<ASelectableCondition>)icon).getObject();
+                                    return condition;
+                                }
+                                else
+                                    return null;
+                            }
+
+                            private IconListComponent getComponent(MouseEvent e) {
+                                return (IconListComponent) e.getComponent();
+                            }
+
+                            private void removeCondition(ASelectableCondition removedCondition) {
+                                ASelectableCondition selectedFilterCondition = getSelectedFilterCondition();
+                                ASelectableCondition newCondition = selectedFilterCondition.removeCondition(removedCondition);
+                                if(newCondition != selectedFilterCondition) {
+                                    apply(newCondition == null ? NO_FILTERING : newCondition);
+                                    NodeTooltipManager.getSharedInstance().hideTipWindow();
+                                }
+                            }
+
+                            @Override
+                            public void mouseEntered(MouseEvent e) {
+                                highlightCondition(e);
+                            }
+                            @Override
+                            public void mouseExited(MouseEvent e) {
+                                getComponent(e).highlightRemovedIcon(null);
+                            }
+
+                            private void highlightCondition(MouseEvent e) {
+                                IconListComponent component = getComponent(e);
+                                if(getSelectedCondition() == NO_FILTERING)
+                                    component.highlightRemovedIcon(null);
+                                else {
+                                    Icon icon = component.getIconAt(e.getPoint());
+                                    component.highlightRemovedIcon(icon);
+                                }
+                            }
+
+                            @Override
+                            public void mouseMoved(MouseEvent e) {
+                                highlightCondition(e);
+                            }
+
+                        };
+                        renderer.addMouseListener(mouseListener);
+                        renderer.addMouseMotionListener(mouseListener);
+                        renderer.setBorder(BorderFactory.createRaisedBevelBorder());
+                        add(renderer);
+                        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                     }
                     @Override
                     public Dimension getPreferredSize() {
                         if(getComponentCount() == 0)
-                            return new Dimension();
+                            return super.getPreferredSize();
                         final Component renderer = getComponent(0);
                         return renderer.getPreferredSize();
                     }
 
                     @Override
-                    public void layout() {
-                        if(getComponentCount() == 0)
+                    public void doLayout() {
+                        if(getComponentCount() == 0) {
+                            super.doLayout();
                             return;
+                        }
                         final Component renderer = getComponent(0);
                         renderer.setLocation(0, 0);
                         renderer.setSize(getSize());
@@ -741,13 +820,13 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 
             @Override
             public Point getToolTipLocation(MouseEvent event) {
-                int position = getHeight() / 5;
-                return new Point(position, position);
+                int height = getHeight();
+                return new Point(height / 5, 4 * height / 5);
             }
 
 
         };
-        ToolTipManager.sharedInstance().registerComponent(box);
+        NodeTooltipManager.getSharedInstance().registerComponent(box);
         box.setPrototypeDisplayValue("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
         box.addActionListener(filterChangeListener);
         return box;
@@ -772,6 +851,10 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 	}
 
 	public DefaultComboBoxModel getFilterConditions() {
+		return getFilterConditionsModel().getConditions();
+	}
+
+	public FilterConditions getFilterConditionsModel() {
 		if (filterConditions == null) {
 			initConditions();
 		}
@@ -825,8 +908,29 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 			mapViewComponent.repaint();
 	}
 
-	private void initConditions() {
-		filterConditions = new DefaultComboBoxModel();
+	@SuppressWarnings("serial")
+    private void initConditions() {
+		filterConditions = new FilterConditions(new DefaultComboBoxModel<ASelectableCondition>() {
+
+            @Override
+            public void setSelectedItem(Object anObject) {
+            	if(getSize() > USER_DEFINED_CONDITION_START_INDEX) {
+            		int selectedItemIndex = getIndexOf(anObject);
+        			int pinnedConditionsCount = USER_DEFINED_CONDITION_START_INDEX + filterConditions.getPinnedConditionsCount();
+        			boolean shouldReorder = selectedItemIndex > pinnedConditionsCount;
+        			if(shouldReorder)
+        				removeElementAt(selectedItemIndex);
+        			if(shouldReorder
+        					|| selectedItemIndex == -1
+        						&&(anObject instanceof ASelectableCondition)
+                				&& ((ASelectableCondition)anObject).canBePersisted()
+                				&& ResourceController.getResourceController().getBooleanProperty("saveQuickFilters"))
+        				insertElementAt((ASelectableCondition) anObject, pinnedConditionsCount);
+            	}
+                super.setSelectedItem(anObject);
+            }
+
+		}, 0);
 		addStandardConditions();
 		filterConditions.setSelectedItem(filterConditions.getElementAt(0));
 		if(activeFilterConditionComboBox == null)
@@ -836,16 +940,15 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 
 	public void loadDefaultConditions() {
 	    try {
-			loadConditions(getFilterConditions(), pathToFilterFile, false);
+			loadConditions(getFilterConditionsModel(), pathToFilterFile, false);
 		}
 		catch (final Exception e) {
 			LogUtils.severe(e);
 		}
     }
 
-	void loadConditions(final DefaultComboBoxModel filterConditionModel, final String pathToFilterFile,
-			final boolean showPopupOnError)
-	        throws IOException {
+	void loadConditions(final FilterConditions internalConditionsModel, final String pathToFilterFile,
+			final boolean showPopupOnError) throws IOException {
 		try {
 			final IXMLParser parser = XMLLocalParserFactory.createLocalXMLParser();
 			File filterFile = new File(pathToFilterFile);
@@ -853,11 +956,13 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 			parser.setReader(reader);
 			reader.setSystemID(filterFile.toURL().toString());
 			final XMLElement loader = (XMLElement) parser.parse();
+			int pinnedConditionsCount = loader.getAttribute("pinnedConditionsCount", 0);
+			internalConditionsModel.setPinnedConditionsCount(pinnedConditionsCount);
 			final Vector<XMLElement> conditions = loader.getChildren();
 			for (int i = 0; i < conditions.size(); i++) {
 				final ASelectableCondition condition = getConditionFactory().loadCondition(conditions.get(i));
 				if(condition != null){
-					filterConditionModel.addElement(condition);
+					internalConditionsModel.addElement(condition);
 				}
 			}
 		}
@@ -875,18 +980,23 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 
 	public void saveConditions() {
 		try {
-			saveConditions(getFilterConditions(), pathToFilterFile);
+			ResourceController resourceController = ResourceController.getResourceController();
+			int savedConditionLimit = resourceController.getBooleanProperty("saveQuickFilters") ? resourceController.getIntProperty("savedConditionLimit") : Integer.MAX_VALUE;
+			saveConditions(getFilterConditionsModel(), pathToFilterFile, savedConditionLimit);
 		}
 		catch (final Exception e) {
 			LogUtils.warn(e);
 		}
 	}
 
-	void saveConditions(final DefaultComboBoxModel filterConditionModel, final String pathToFilterFile)
+	void saveConditions(final FilterConditions filterConditionModel, final String pathToFilterFile, int savedConditionLimit)
 	        throws IOException {
 		final XMLElement saver = new XMLElement();
 		saver.setName("filter_conditions");
-        for (int i = 0; i < filterConditionModel.getSize(); i++) {
+		int pinnedConditionsCount = filterConditionModel.getPinnedConditionsCount();
+		saver.setAttribute("pinnedConditionsCount", Integer.toString(pinnedConditionsCount));
+        int savedConditionNumber = Math.min(Math.max(savedConditionLimit, pinnedConditionsCount), filterConditionModel.getSize());
+        for (int i = 0; i < savedConditionNumber; i++) {
             final ASelectableCondition cond = (ASelectableCondition) filterConditionModel.getElementAt(i);
             if (cond != null && cond.canBePersisted()) {
                 cond.toXml(saver);
@@ -898,15 +1008,19 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		}
 	}
 
-	void setFilterConditions(final DefaultComboBoxModel newConditionModel) {
+	void setFilterConditions(final FilterConditions newConditionModel) {
 		filterConditions.removeAllElements();
 		for (int i = 0; i < newConditionModel.getSize(); i++) {
-			filterConditions.addElement(newConditionModel.getElementAt(i));
+			ASelectableCondition element = newConditionModel.getElementAt(i);
+			filterConditions.addElement(element);
 		}
-		filterConditions.setSelectedItem(newConditionModel.getSelectedItem());
-		addStandardConditions();
-		applyFilter(false);
+		filterConditions.setPinnedConditionsCount(newConditionModel.getPinnedConditionsCount());
 		filterMenuBuilder.updateMenus();
+		addStandardConditions();
+		ASelectableCondition selectedItem = newConditionModel.getSelectedItem();
+		if(selectedItem != null)
+			filterConditions.setSelectedItem(selectedItem);
+		applyFilter(false);
 	}
 
 	private void updateSettingsFromFilter(final Filter filter) {
@@ -992,14 +1106,16 @@ public class FilterController implements IExtension, IMapViewChangeListener {
     }
 
 	private boolean isNodeHighlighted(NodeModel node) {
+		if(highlightCondition == null)
+			return false;
+		if(highlightedConditionContext == null)
+			return highlightCondition.checkNode(node);
 		try {
-			if(highlightedConditionContext != null)
-				highlightedConditionContext.setDisabled(true);
+			highlightedConditionContext.setDisabled(true);
 			return highlightCondition != null && highlightCondition.checkNode(node);
 		}
 		finally {
-			if(highlightedConditionContext != null)
-				highlightedConditionContext.setDisabled(false);
+			highlightedConditionContext.setDisabled(false);
 		}
     }
 
@@ -1021,8 +1137,11 @@ public class FilterController implements IExtension, IMapViewChangeListener {
 		final DefaultComboBoxModel filterConditions = getFilterConditions();
 		if(condition.equals(filterConditions.getSelectedItem()))
 			applyFilter(true);
-		else
-			filterConditions.setSelectedItem(condition);
+        else {
+            activeFilterConditionComboBox.setEditable(true);
+            filterConditions.setSelectedItem(condition);
+            activeFilterConditionComboBox.setEditable(false);
+        }
     }
 
 	public EntryVisitor getMenuBuilder() {
@@ -1038,5 +1157,9 @@ public class FilterController implements IExtension, IMapViewChangeListener {
         IMapSelection selection = Controller.getCurrentController().getSelection();
         if(selection != null && map.equals(selection.getMap()))
             updateUILater();
+    }
+
+    private ASelectableCondition getSelectedFilterCondition() {
+        return getSelectedCondition();
     }
 }

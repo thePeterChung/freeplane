@@ -19,10 +19,14 @@
  */
 package org.freeplane.features.link;
 
+import java.awt.FontMetrics;
+import java.util.List;
+
+import javax.swing.Icon;
+
 import org.freeplane.core.util.Hyperlink;
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.filter.StringMatchingStrategy;
-import org.freeplane.features.filter.StringMatchingStrategy.Type;
 
 /**
  * @author Dimitry Polivaev
@@ -50,6 +54,12 @@ public class HyperLinkContainsCondition extends HyperLinkCondition {
 		final String condition = TextUtils.getText(LinkConditionController.FILTER_LINK);
 		return createDescription(condition, containsDescription(), getHyperlink());
 	}
+
+    @Override
+    protected List<Icon> createRenderedIcons(FontMetrics fontMetrics) {
+        final String condition = TextUtils.getText(LinkConditionController.FILTER_LINK);
+        return createRenderedIcons(condition, containsOperator(), getHyperlink(), fontMetrics);
+    }
 
 	@Override
 	protected String getName() {

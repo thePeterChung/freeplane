@@ -33,6 +33,7 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -57,16 +58,20 @@ import javax.swing.event.InternalFrameAdapter;
 import javax.swing.event.InternalFrameEvent;
 
 import org.apache.commons.codec.binary.Base64;
+import org.freeplane.api.TextWritingDirection;
 import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.FileOpener;
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.ui.textchanger.TranslatedElementFactory;
 import org.freeplane.core.util.LogUtils;
 import org.freeplane.core.util.TextUtils;
+import org.freeplane.features.map.MapModel;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.ui.IMapViewChangeListener;
 import org.freeplane.features.url.mindmapmode.DroppedMindMapOpener;
 import org.freeplane.view.swing.map.MapView;
 import org.freeplane.view.swing.map.NodeView;
+import org.freeplane.view.swing.map.overview.MapViewPane;
 import org.freeplane.view.swing.ui.DefaultMapMouseListener;
 
 import net.infonode.docking.AbstractTabWindow;
@@ -79,7 +84,6 @@ import net.infonode.docking.SplitWindow;
 import net.infonode.docking.TabWindow;
 import net.infonode.docking.View;
 import net.infonode.docking.WindowPopupMenuFactory;
-import net.infonode.docking.internalutil.InternalDockingUtil;
 import net.infonode.docking.properties.DockingWindowProperties;
 import net.infonode.docking.properties.RootWindowProperties;
 import net.infonode.docking.properties.TabWindowProperties;
@@ -108,6 +112,7 @@ import net.infonode.tabbedpanel.TabLayoutPolicy;
 import net.infonode.tabbedpanel.TabbedPanelProperties;
 import net.infonode.tabbedpanel.titledtab.TitledTabProperties;
 import net.infonode.tabbedpanel.titledtab.TitledTabSizePolicy;
+import net.infonode.tabbedpanel.titledtab.TitledTabStateProperties;
 import net.infonode.util.Direction;
 
 class MapViewDockingWindows implements IMapViewChangeListener {
@@ -237,24 +242,28 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 				   return null;
 				}
 				JPopupMenu menu = new JPopupMenu(window.getTitle());
-				JMenuItem menuItem = new JMenuItem(TextUtils.getText("TabPopUpMenu.rename.text","Rename"));
-				menuItem.setToolTipText(TextUtils.getText("TabPopUpMenu.rename.tooltip","Windows layout changes may reset the tab title."));
-				menuItem.addActionListener(new ActionListener() {
-				    public void actionPerformed(ActionEvent e) {
-						JComponent mapView = (JComponent) getContainedMapView(window);
-						String customizedTabName = (String) mapView.getClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY);
-						customizedTabName = customizedTabName!=null ? customizedTabName : mapView.getName();
-						String newName = JOptionPane.showInputDialog(TextUtils.getText("TabPopUpMenu.rename.inputDialog","Input new temporary name: "), customizedTabName);
-				        if(Objects.equals(newName, "") || newName==null ){
-				            mapView.putClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY, null);
-				        } else {
-				            mapView.putClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY, newName);
-				        }
-						addTitleProvider(window); //TODO: revisar
-				        setTitle();
-				    }
- 				});
-				menu.add(menuItem);
+                JMenuItem closeItem = TranslatedElementFactory.createMenuItem("close_map");
+                closeItem.setIcon(new CloseIcon(tabIconSize()));
+                closeItem.addActionListener(e -> {
+                    Controller.getCurrentController().getMapViewManager().close(getContainedMapView(window));
+                });
+                menu.add(closeItem);
+                JMenuItem renameItem = new JMenuItem(TextUtils.getText("TabPopUpMenu.rename.text","Rename"));
+				renameItem.setToolTipText(TextUtils.getText("TabPopUpMenu.rename.tooltip","Windows layout changes may reset the tab title."));
+				renameItem.addActionListener(e -> {
+                	JComponent mapView = (JComponent) getContainedMapView(window);
+                	String customizedTabName = (String) mapView.getClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY);
+                	customizedTabName = customizedTabName!=null ? customizedTabName : mapView.getName();
+                	String newName = JOptionPane.showInputDialog(TextUtils.getText("TabPopUpMenu.rename.inputDialog","Input new temporary name: "), customizedTabName);
+                    if(Objects.equals(newName, "") || newName==null ){
+                        mapView.putClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY, null);
+                    } else {
+                        mapView.putClientProperty(CUSTOMIZED_TAB_NAME_PROPERTY, newName);
+                    }
+                	addTitleProvider(window);
+                    setTitle();
+                });
+				menu.add(renameItem);
 				return menu;
 			}
 		});
@@ -281,7 +290,6 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 
 			@Override
 			public void lookAndFeelChanging() {
-				String lf = UIManager.getLookAndFeel().getID();
 				DockingWindowsTheme newTheme;
 				boolean existingDockingThemeMatchesLookAndFeel = lf.endsWith("Aqua") != (theme instanceof LookAndFeelDockingTheme);
 				if(existingDockingThemeMatchesLookAndFeel)
@@ -313,7 +321,7 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 		tabbedPanelProperties.getContentPanelProperties()
 		    .getComponentProperties().setInsets(new Insets(0, 0, 0, 0)).setBorder(BorderFactory.createEmptyBorder());
 
-		int buttonSize = Math.round(UITools.FONT_SCALE_FACTOR * InternalDockingUtil.DEFAULT_BUTTON_ICON_SIZE);
+		int buttonSize = tabIconSize();
 		tabWindowProperties.getMaximizeButtonProperties().setIcon(new MaximizeIcon(buttonSize));
 		tabWindowProperties.getMinimizeButtonProperties().setIcon(new MinimizeIcon(buttonSize));
 		tabWindowProperties.getCloseButtonProperties().setIcon(new CloseIcon(buttonSize));
@@ -343,6 +351,10 @@ class MapViewDockingWindows implements IMapViewChangeListener {
         normalButtonProperties.getMinimizeButtonProperties().setIcon(new MinimizeIcon(buttonSize));
         normalButtonProperties.getRestoreButtonProperties().setIcon(new RestoreIcon(buttonSize));
 	}
+
+    private static int tabIconSize() {
+        return UITools.getUIFontSize(0.8);
+    }
 
 	private void removeDesktopPaneAccelerators() {
 		 final InputMap map = new InputMap();
@@ -380,7 +392,7 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 						dockedView.restore();
 					else
 						dockedView.restoreFocus();
-					focusMapViewLater((MapView) pNewMap);
+					focusMapViewLater((MapView) pNewMap, () -> {/**/});
 					return;
 				}
 			}
@@ -465,7 +477,7 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 	}
 
 	static Component getContainedMapView(View dockedWindow) {
-	    JScrollPane scrollPane = (JScrollPane) ((Container) dockedWindow.getComponent()).getComponent(1);
+	    JScrollPane scrollPane = ((MapViewPane) dockedWindow.getComponent()).getMapViewScrollPane();
 	    Component view = scrollPane.getViewport().getView();
         return view;
     }
@@ -473,6 +485,14 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 	private void addDockedWindow(final Component pOldMap, final Component pNewMap) {
 	    final View viewFrame = viewSerializer.newDockedView(pNewMap, createTitle(pNewMap));
 		addDockedView(pOldMap != null ? getContainingDockedWindow(pOldMap) : null, viewFrame);
+        updateTabTooltip(pNewMap);
+    }
+
+    private void updateTabTooltip(final Component pNewMap) {
+        File file = ((MapView)pNewMap).getMap().getFile();
+        TitledTabStateProperties tabProperties = getContainingDockedWindow(pNewMap)
+                .getWindowProperties().getTabProperties().getTitledTabProperties().getNormalProperties();
+        tabProperties.setToolTipText(file != null ? TextWritingDirection.LEFT_TO_RIGHT.isolatePathSeparators(file.getAbsolutePath()) :  null);
     }
 
 	@Override
@@ -562,7 +582,7 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 		initialTabNameLoadingWasDone = true;
 	}
 
-	public void focusMapViewLater(final MapView mapView) {
+	public void focusMapViewLater(final MapView mapView, Runnable onFocus) {
 		Timer timer = new Timer(40, new ActionListener() {
 			int retryCount = 5;
 		    @Override
@@ -593,6 +613,8 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 					retryCount--;
 					eventTimer.start();
 				}
+				else
+					onFocus.run();
             }
 		  });
 		timer.setRepeats(false);
@@ -617,6 +639,7 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 		if(containingDockedWindow != null) {
 			String title = createTitle(mapViewComponent);
 			containingDockedWindow.getViewProperties().setTitle(title);
+			updateTabTooltip(mapViewComponent);
 		}
     }
 
@@ -724,5 +747,32 @@ class MapViewDockingWindows implements IMapViewChangeListener {
 		tabAreaComponentsProperties.getComponentProperties().setBackgroundColor(null);
 		tabAreaComponentsProperties.getComponentProperties().setForegroundColor(null);
 		return classicDockingTheme;
+	}
+
+	public void selectMapNextView(JComponent current) {
+	    selectMapViewRelative(current,  1);
+	}
+
+	public void selectMapPreviousView(JComponent current) {
+	    selectMapViewRelative(current, -1);
+	}
+
+	private void selectMapViewRelative(JComponent current, int step) {
+	    if (!(current instanceof MapView)) return;
+	    int currentIndex = mapViews.indexOf(current);
+	    if (currentIndex < 0) return;
+	    MapModel map = ((MapView) current).getMap();
+	    int n = mapViews.size();
+	    int idx = Math.floorMod(currentIndex + step, n);
+	    while (idx != currentIndex) {
+	        Component c = mapViews.get(idx);
+	        if (c instanceof MapView && ((MapView) c).getMap() == map) {
+	            Controller.getCurrentController()
+	                      .getMapViewManager()
+	                      .changeToMapView(c);
+	            return;
+	        }
+	        idx = Math.floorMod(idx + step, n);
+	    }
 	}
 }

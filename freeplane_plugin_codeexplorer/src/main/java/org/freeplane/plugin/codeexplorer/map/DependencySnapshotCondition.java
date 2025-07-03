@@ -19,9 +19,12 @@
  */
 package org.freeplane.plugin.codeexplorer.map;
 
+import java.awt.FontMetrics;
+import java.util.List;
 import java.util.Set;
 
-import org.freeplane.core.util.TextUtils;
+import javax.swing.Icon;
+
 import org.freeplane.features.filter.condition.ASelectableCondition;
 import org.freeplane.features.filter.condition.ICondition;
 import org.freeplane.features.map.NodeModel;
@@ -53,7 +56,12 @@ class DependencySnapshotCondition extends ASelectableCondition {
 		return description;
     }
 
-	@Override
+    @Override
+    protected List<Icon> createRenderedIcons(FontMetrics fontMetrics) {
+        return createRenderedIconsFromDescription(fontMetrics);
+    }
+
+    @Override
     protected String getName() {
 	    return NAME;
    }

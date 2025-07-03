@@ -19,7 +19,6 @@
  */
 package org.freeplane.view.swing.map.edge;
 
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -45,16 +44,12 @@ public class OutlineEdgeView extends EdgeView {
 
 	@Override
 	protected void createStart() {
-		start = getSource().getMainView().getLeftPoint();
+		start = shapeStart = getSource().getMainView().getLeftPoint();
 		end = getTarget().getMainView().getLeftPoint();
 	}
 
 	@Override
 	protected void draw(final Graphics2D g) {
-		final Color color = getColor();
-		g.setColor(color);
-		final Stroke stroke = getStroke();
-		g.setStroke(stroke);
 		g.drawLine(start.x, start.y, start.x, end.y);
 		g.drawLine(start.x, end.y, end.x, end.y);
 		if(getTarget().isSummary()){

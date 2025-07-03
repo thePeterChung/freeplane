@@ -19,6 +19,7 @@
  */
 package org.freeplane.features.icon.factory;
 
+import java.awt.Component;
 import java.awt.GraphicsEnvironment;
 import java.net.URL;
 
@@ -38,17 +39,18 @@ import org.freeplane.features.icon.UIIcon;
  */
 public interface IconFactory {
 
-	Quantity<LengthUnit> DEFAULT_UI_ICON_HEIGTH = ResourceController.getResourceController()
+	Quantity<LengthUnit> DEFAULT_UI_ICON_HEIGHT = ResourceController.getResourceController()
 		    .getLengthQuantityProperty("toolbar_icon_height");
-  
+
 	IconFactory FACTORY = ! GraphicsEnvironment.isHeadless() ? GraphicIconFactory.FACTORY : HeadlessIconFactory.FACTORY;
-	
+
 	static IconFactory getInstance() {
 		return FACTORY;
 	}
-	
+
 	boolean canScaleIcon(Icon icon);
 	Icon getScaledIcon(Icon icon, Quantity<LengthUnit> quantity);
+	Icon getScaledIcon(final Icon icon, final Component component);
 	Icon getIcon(URL imageURL);
 	Icon getIcon(UIIcon icon);
 	Icon getIcon(UIIcon uiIcon, Quantity<LengthUnit> iconHeight);

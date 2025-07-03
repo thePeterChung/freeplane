@@ -54,7 +54,7 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JEditorPane;
-import javax.swing.JFileChooser;
+import org.freeplane.api.swing.JFileChooser;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JScrollPane;
@@ -430,13 +430,19 @@ public class UITools {
 		final IMapViewManager viewController = Controller.getCurrentController().getMapViewManager();
 		viewController.scrollNodeToVisible(node);
 		final Component c = viewController.getComponent(node);
+		if(c == null)
+			return;
 		UITools.setDialogLocationRelativeTo(dialog, c);
 	}
 
 	public static void setDialogLocationUnder(final JDialog dialog, final NodeModel node) {
+		if(node == null)
+			return;
 		final Controller controller = Controller.getCurrentController();
 		final IMapViewManager viewController = controller.getMapViewManager();
 		final JComponent c = (JComponent) viewController.getComponent(node);
+		if(c == null)
+			return;
 		final int x = 0;
 		final int y = c.getHeight();
 		final Point location = new Point(x, y);
@@ -476,7 +482,8 @@ public class UITools {
 		}
 		else {
 			viewController.scrollNodeToVisible(node);
-			parentComponent = viewController.getComponent(node);
+			Component c = viewController.getComponent(node);
+			parentComponent =  c != null ? c : getCurrentRootComponent();
 		}
 		return JOptionPane.showConfirmDialog(parentComponent, message, title, optionType, messageType);
 	}
@@ -494,8 +501,8 @@ public class UITools {
 		final Controller controller = Controller.getCurrentController();
 		final IMapViewManager viewController = controller.getMapViewManager();
 		viewController.scrollNodeToVisible(node);
-		final Component parentComponent = viewController.getComponent(node);
-		return JOptionPane.showInputDialog(parentComponent, message, initialValue);
+		final Component c = viewController.getComponent(node);
+		return JOptionPane.showInputDialog(c != null ? c : getCurrentRootComponent(), message, initialValue);
 	}
 
 	public static String showInputDialog( final NodeModel node, final String text,
@@ -506,8 +513,8 @@ public class UITools {
 		final Controller controller = Controller.getCurrentController();
 		final IMapViewManager viewController = controller.getMapViewManager();
 		viewController.scrollNodeToVisible(node);
-		final Component parentComponent = viewController.getComponent(node);
-		return JOptionPane.showInputDialog(parentComponent, text, title, type);
+		final Component c = viewController.getComponent(node);
+		return JOptionPane.showInputDialog(c != null ? c : getCurrentRootComponent(), text, title, type);
 	}
 
 	public static final String SCROLLBAR_INCREMENT = "scrollbar_increment";
@@ -705,11 +712,12 @@ public class UITools {
 			int windowY = resourceController.getIntProperty("appwindow_y", 0);
 			final GraphicsConfiguration graphicsConfiguration = findGraphicsConfiguration(windowX, windowY);
 			final int userDefinedScreenResolution;
+			final int userDefinedDisplayScale = resourceController.getIntProperty("display_scale");
 			if(graphicsConfiguration != null) {
 				if(Compat.isWindowsOS() && ! Compat.isJavaVersionLessThan(Compat.JAVA_VERSION_15) || Compat.isMacOsX()) {
 					if (OptionPanelBuilder.hidePropertyByDefault(MONITOR_SIZE_INCHES_PROPERTY)) {
 						int screenResolution = Toolkit.getDefaultToolkit().getScreenResolution();
-						return screenResolution / 72f;
+						return (screenResolution * userDefinedDisplayScale) / (72f * 100f);
 					}
 				}
 				final Rectangle screenBounds = graphicsConfiguration.getBounds();
@@ -731,7 +739,7 @@ public class UITools {
 				userDefinedScreenResolution = resourceController.getIntProperty("user_defined_screen_resolution", 96);
 				resourceController.setDefaultProperty(MONITOR_SIZE_INCHES_PROPERTY, Double.toString(0));
 			}
-			return userDefinedScreenResolution  / 72f;
+			return (userDefinedScreenResolution * userDefinedDisplayScale)  / (72f * 100f);
     }
 
 	private static GraphicsConfiguration findGraphicsConfiguration(int windowX, int windowY) {
@@ -825,8 +833,8 @@ public class UITools {
 	}
 
 	public static Font getUIFont() {
-		return new JMenuItem().getFont();
-	}
+	    Font font = UIManager.getFont("MenuItem.font");
+	    return (font != null) ? font : new JMenuItem().getFont();	}
 
 	public static Font getDefaultLabelFont() {
 		return UIManager.getDefaults().getFont("Label.font");

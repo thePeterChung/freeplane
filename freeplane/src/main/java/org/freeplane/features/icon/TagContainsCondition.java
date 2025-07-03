@@ -19,17 +19,23 @@
  */
 package org.freeplane.features.icon;
 
+import java.awt.FontMetrics;
+import java.util.List;
+
+import javax.swing.Icon;
+
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.filter.StringMatchingStrategy;
 import org.freeplane.features.filter.condition.ASelectableCondition;
 import org.freeplane.features.filter.condition.ConditionFactory;
+import org.freeplane.features.filter.condition.ConditionFactory.ConditionOperator;
 import org.freeplane.n3.nanoxml.XMLElement;
 
 /**
  * @author Dimitry Polivaev
  */
 public class TagContainsCondition extends TagCondition {
-	private static final String NAME = "tag_contains_condition";
+	static final String NAME = "tag_contains_condition";
     static final String VALUE = "VALUE";
 
 	static ASelectableCondition load(final XMLElement element) {
@@ -62,13 +68,13 @@ public class TagContainsCondition extends TagCondition {
 
 
 	@Override
-    protected boolean checkTag(Tag tag, String tagCategorySeparator) {
-        return checkText(tag.getContent());
+    protected boolean checkShortTag(Tag tag, String tagCategorySeparator) {
+        return checkText(tag.withoutCategories(tagCategorySeparator).getContent());
     }
 
     @Override
-    protected boolean checkTag(CategorizedTag categorizedTag, String tagCategorySeparator) {
-        return checkText(categorizedTag.getContent(tagCategorySeparator));
+    protected boolean checkCategorizedTag(Tag categorizedTag, String tagCategorySeparatorForMap) {
+        return checkText(categorizedTag.getContent());
     }
 
 	@Override
@@ -78,10 +84,15 @@ public class TagContainsCondition extends TagCondition {
 
 	@Override
 	protected String createDescription() {
-		final String simpleCondition = TextUtils.getText(ConditionFactory.FILTER_CONTAINS);
+		final String simpleCondition = TextUtils.getText(matchWordwise ? ConditionFactory.FILTER_CONTAINS_WORDWISE : ConditionFactory.FILTER_CONTAINS);
 		return createDescription(TextUtils.getText(IconConditionController.FILTER_TAG), simpleCondition, value);
 	}
 
+    @Override
+    protected List<Icon> createRenderedIcons(FontMetrics fontMetrics) {
+        String operator = (matchWordwise ? ConditionOperator.FILTER_CONTAINS_WORDWISE : ConditionOperator.FILTER_CONTAINS).getOpeningValueDelimiter();
+        return createRenderedIcons("", ConditionOperator.EMPTY, tagIcon(operator + value + operator, fontMetrics) , fontMetrics);
+    }
 	@Override
 	public void fillXML(final XMLElement child) {
 		super.fillXML(child);

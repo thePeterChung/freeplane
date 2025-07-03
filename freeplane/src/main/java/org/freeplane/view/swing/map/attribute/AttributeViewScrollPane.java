@@ -19,14 +19,20 @@
  */
 package org.freeplane.view.swing.map.attribute;
 
+import java.awt.Adjustable;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.geom.AffineTransform;
 
+import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
+import javax.swing.JTable;
 
 class AttributeViewScrollPane extends JScrollPane {
 	/**
-	 * 
+	 *
 	 */
 	private static final long serialVersionUID = 1L;
 
@@ -38,7 +44,7 @@ class AttributeViewScrollPane extends JScrollPane {
 		setOpaque(false);
 		getViewport().setOpaque(false);
 	}
-	
+
 	@Override
 	public Dimension getMaximumSize() {
 		return getPreferredSize();
@@ -60,5 +66,51 @@ class AttributeViewScrollPane extends JScrollPane {
     public boolean isValidateRoot() {
 	    return false;
     }
-	
+
+    @Override
+	public JScrollBar createHorizontalScrollBar() {
+        return new BugFixScrollBar(Adjustable.HORIZONTAL);
+    }
+
+    @Override
+	public JScrollBar createVerticalScrollBar() {
+        return new BugFixScrollBar(Adjustable.VERTICAL);
+    }
+
+	private static class BugFixScrollBar extends JScrollBar {
+
+        /**
+		 * Comment for <code>serialVersionUID</code>
+		 */
+		private static final long serialVersionUID = -688620479795225879L;
+
+		public BugFixScrollBar(int orientation) {
+            super(orientation);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            if(needsFixForWindowsUI()) {
+            	g.setColor(getForeground());
+            	g.fillRect(0, 0, getWidth(), getHeight());
+            	g.setColor(getBackground());
+            	g.drawRect(1, 1, getWidth()-2, getHeight()-2);
+            } else
+				super.paintComponent(g);
+        }
+
+		private boolean needsFixForWindowsUI() {
+			return isPaintingForPrint() && getUI().getClass().getSimpleName().equals("WindowsScrollBarUI");
+		}
+
+		@Override
+		protected void paintChildren(Graphics g) {
+            if(! needsFixForWindowsUI())
+            	super.paintChildren(g);
+		}
+        
+        
+    }
+
+
 }

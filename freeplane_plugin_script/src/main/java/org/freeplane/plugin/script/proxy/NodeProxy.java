@@ -18,6 +18,7 @@ import java.util.stream.Stream;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.typehandling.NumberMath;
 import org.freeplane.api.Attributes;
+import org.freeplane.api.BookmarkType;
 import org.freeplane.api.ChildNodesLayout;
 import org.freeplane.api.Cloud;
 import org.freeplane.api.ConditionalStyles;
@@ -26,6 +27,7 @@ import org.freeplane.api.DependencyLookup;
 import org.freeplane.api.LayoutOrientation;
 import org.freeplane.api.LengthUnit;
 import org.freeplane.api.Node;
+import org.freeplane.api.NodeBookmark;
 import org.freeplane.api.NodeCondition;
 import org.freeplane.api.NodeGeometry;
 import org.freeplane.api.NodeRO;
@@ -39,6 +41,9 @@ import org.freeplane.core.undo.IActor;
 import org.freeplane.core.util.HtmlUtils;
 import org.freeplane.core.util.LogUtils;
 import org.freeplane.core.util.TextUtils;
+import org.freeplane.features.bookmarks.mindmapmode.BookmarksController;
+import org.freeplane.features.bookmarks.mindmapmode.MapBookmarks;
+import org.freeplane.features.bookmarks.mindmapmode.NodeBookmarkDescriptor;
 import org.freeplane.features.encrypt.Base64Coding;
 import org.freeplane.features.encrypt.PasswordStrategy;
 import org.freeplane.features.explorer.AccessedNodes;
@@ -54,6 +59,7 @@ import org.freeplane.features.link.LinkController;
 import org.freeplane.features.link.mindmapmode.MLinkController;
 import org.freeplane.features.map.EncryptionModel;
 import org.freeplane.features.map.FreeNode;
+import org.freeplane.features.map.IMapSelection;
 import org.freeplane.features.map.MapController;
 import org.freeplane.features.map.MapController.Direction;
 import org.freeplane.features.map.MapModel;
@@ -61,6 +67,7 @@ import org.freeplane.features.map.MapNavigationUtils;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.map.clipboard.MapClipboardController.CopiedNodeSet;
 import org.freeplane.features.map.clipboard.MindMapPlainTextWriter;
+import org.freeplane.features.map.mindmapmode.InsertionRelation;
 import org.freeplane.features.map.mindmapmode.MMapController;
 import org.freeplane.features.map.mindmapmode.clipboard.MMapClipboardController;
 import org.freeplane.features.mode.Controller;
@@ -568,7 +575,9 @@ class NodeProxy extends AbstractProxy<NodeModel> implements Proxy.Node {
 	// NodeRO: R
 	@Override
 	public boolean isFolded() {
-		return getDelegate().isFolded();
+		IMapSelection selection = Controller.getCurrentController().getSelection();
+		NodeModel node = getDelegate();
+		return selection != null ? selection.isFolded(node) : node.isFolded();
 	}
 
     // NodeRO: R
@@ -634,7 +643,7 @@ class NodeProxy extends AbstractProxy<NodeModel> implements Proxy.Node {
 	public void moveTo(final Node parentNodeProxy) {
 		final NodeModel parentNode = ((NodeProxy) parentNodeProxy).getDelegate();
         final NodeModel movedNode = getDelegate();
-        getMapController().moveNodesAsChildren(Arrays.asList(movedNode), parentNode);
+        getMapController().moveNodes(Arrays.asList(movedNode), parentNode, InsertionRelation.AS_CHILD);
 	}
 
 	// Node: R/W
@@ -1333,4 +1342,49 @@ class NodeProxy extends AbstractProxy<NodeModel> implements Proxy.Node {
     public Tags getTags() {
         return new TagsProxy(getDelegate(), getScriptContext());
     }
+
+	// Node: R/W
+	@Override
+	public void setBookmark(String name, BookmarkType bookmarkType) {
+		final BookmarksController bookmarksController = getBookmarksController();
+		final NodeModel node = getDelegate();
+		boolean opensAsRoot = (bookmarkType == BookmarkType.ROOT);
+		final NodeBookmarkDescriptor descriptor = new NodeBookmarkDescriptor(name, opensAsRoot);
+		bookmarksController.addBookmark(node, descriptor);
+	}
+
+	// Node: R/W
+	@Override
+	public void setBookmark(String name, String bookmarkType) {
+		try {
+			BookmarkType enumType = BookmarkType.valueOf(bookmarkType.toUpperCase());
+			setBookmark(name, enumType);
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException("Invalid bookmark type: '" + bookmarkType + 
+				"'. Valid values are: " + Arrays.toString(BookmarkType.values()) + " (case insensitive)", e);
+		}
+	}
+
+	// Node: R/W
+	@Override
+	public void removeBookmark() {
+		final BookmarksController bookmarksController = getBookmarksController();
+		final NodeModel node = getDelegate();
+		bookmarksController.removeBookmark(node);
+	}
+
+	private BookmarksController getBookmarksController() {
+		return getModeController().getExtension(BookmarksController.class);
+	}
+
+	// NodeRO: R
+	@Override
+	public NodeBookmark getBookmark() {
+		final BookmarksController bookmarksController = getBookmarksController();
+		final MapModel map = getDelegate().getMap();
+		final MapBookmarks mapBookmarks = bookmarksController.getBookmarks(map);
+		final String nodeId = getDelegate().getID();
+		final org.freeplane.features.bookmarks.mindmapmode.NodeBookmark coreBookmark = mapBookmarks.getBookmark(nodeId);
+		return coreBookmark != null ? new NodeBookmarkProxy(coreBookmark, getScriptContext()) : null;
+	}
 }

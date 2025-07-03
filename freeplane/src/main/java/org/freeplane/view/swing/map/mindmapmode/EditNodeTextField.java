@@ -19,6 +19,7 @@
  */
 package org.freeplane.view.swing.map.mindmapmode;
 
+import java.awt.AWTEvent;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Container;
@@ -28,9 +29,11 @@ import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Point;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.Transferable;
+import java.awt.event.AWTEventListener;
 import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
@@ -52,11 +55,9 @@ import javax.swing.Icon;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
-import javax.swing.JLabel;
 import javax.swing.JMenu;
 import javax.swing.JPopupMenu;
 import javax.swing.KeyStroke;
-import javax.swing.RootPaneContainer;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.MatteBorder;
@@ -67,8 +68,11 @@ import javax.swing.text.DefaultEditorKit;
 import javax.swing.text.DefaultEditorKit.PasteAction;
 import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
+import javax.swing.text.MutableAttributeSet;
 import javax.swing.text.NavigationFilter;
 import javax.swing.text.Position.Bias;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
 import javax.swing.text.StyledEditorKit;
 import javax.swing.text.StyledEditorKit.BoldAction;
 import javax.swing.text.StyledEditorKit.ItalicAction;
@@ -104,12 +108,12 @@ import org.freeplane.features.text.mindmapmode.EventBuffer;
 import org.freeplane.features.text.mindmapmode.MTextController;
 import org.freeplane.features.ui.IMapViewChangeListener;
 import org.freeplane.features.ui.IMapViewManager;
+import org.freeplane.view.swing.map.FreeplaneTooltip;
 import org.freeplane.view.swing.map.MainView;
 import org.freeplane.view.swing.map.MapView;
 import org.freeplane.view.swing.map.NodeView;
 import org.freeplane.view.swing.map.ZoomableLabel;
 import org.freeplane.view.swing.map.ZoomableLabelUI;
-import org.freeplane.view.swing.map.ZoomableLabelUI.LayoutData;
 
 import com.lightdev.app.shtm.SHTMLPanel;
 import com.lightdev.app.shtm.SHTMLWriter;
@@ -120,6 +124,28 @@ import com.lightdev.app.shtm.bugfix.MapElementRemovingWorkaround;
  * @author foltin
  */
 public class EditNodeTextField extends EditNodeBase {
+    private static class StrikeThroughAction extends StyledEditorKit.StyledTextAction {
+        private static final String STRIKE_THROUGH = "text-decoration";
+        private static final String STRIKE_VAL = "line-through";
+
+        public StrikeThroughAction() {
+            super("font-strikethrough");
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            JEditorPane editor = getEditor(e);
+            if (editor != null) {
+                StyledEditorKit kit = getStyledEditorKit(editor);
+                MutableAttributeSet attr = kit.getInputAttributes();
+                boolean strikethrough = (StyleConstants.isStrikeThrough(attr));
+                SimpleAttributeSet sas = new SimpleAttributeSet();
+                StyleConstants.setStrikeThrough(sas, !strikethrough);
+                setCharacterAttributes(editor, sas, false);
+            }
+        }
+    }
+
     private class MyNavigationFilter extends NavigationFilter {
     	private final JEditorPane textfield;
         public MyNavigationFilter(JEditorPane textfield) {
@@ -305,7 +331,7 @@ public class EditNodeTextField extends EditNodeBase {
 		}
 		else SPLIT_KEY_CODE = -1;
 	}
-	private class TextFieldListener implements KeyListener, FocusListener, MouseListener {
+	private class TextFieldListener implements KeyListener, FocusListener, MouseListener, AWTEventListener {
 		private static final int KEYSTROKE_MODIFIERS = KeyEvent.ALT_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK | KeyEvent.CTRL_DOWN_MASK | KeyEvent.META_DOWN_MASK;
 		final int CANCEL = 2;
 		final int EDIT = 1;
@@ -316,7 +342,7 @@ public class EditNodeTextField extends EditNodeBase {
 		}
 
 		private void conditionallyShowPopup(final MouseEvent e) {
-			if (e.isPopupTrigger()) {
+			if (Compat.isPopupTrigger(e)) {
 				final JComponent component = (JComponent) e.getComponent();
 				final JPopupMenu popupMenu = createPopupMenu(component);
 				popupShown = true;
@@ -333,6 +359,24 @@ public class EditNodeTextField extends EditNodeBase {
 			ModeController modeController = Controller.getCurrentModeController();
             modeController.setBlocked(true);
             ((MTextController)modeController.getExtension(TextController.class)).setCurrentBlockingEditor(EditNodeTextField.this);
+            Toolkit.getDefaultToolkit().addAWTEventListener(this, AWTEvent.FOCUS_EVENT_MASK);
+		}
+
+
+		@Override
+		public void eventDispatched(AWTEvent event) {
+		    if (event instanceof FocusEvent) {
+		        FocusEvent fe = (FocusEvent) event;
+
+		        // If focus is moving away from the text editor
+		        if (textfield != null
+		        		&& fe.getID() == FocusEvent.FOCUS_GAINED && ! fe.isTemporary()
+		        		&& fe.getComponent() != textfield
+		        		&& fe.getOppositeComponent() != textfield
+		        		&& fe.getOppositeComponent() != null) {
+		        	focusLost(new FocusEvent(textfield, FocusEvent.FOCUS_LOST, false, fe.getComponent()));
+		        }
+		    }
 		}
 
 		@Override
@@ -347,11 +391,13 @@ public class EditNodeTextField extends EditNodeBase {
 				return;
 			}
 			Component oppositeComponent = e.getOppositeComponent();
-			if (e.isTemporary() && oppositeComponent == null) {
+			if (e.isTemporary() && (oppositeComponent == null ||
+					oppositeComponent == SwingUtilities.getRootPane(nodeView)
+					|| SwingUtilities.getAncestorOfClass(FreeplaneTooltip.class, oppositeComponent) != null)) {
 				return;
 			}
 			Window myWindow = SwingUtilities.getWindowAncestor(e.getComponent());
-			if (oppositeComponent != null && SwingUtilities.getWindowAncestor(oppositeComponent)
+			if (myWindow != null && oppositeComponent != null && SwingUtilities.getWindowAncestor(oppositeComponent)
 					!= myWindow) {
 				myWindow.addWindowFocusListener(new WindowFocusListener() {
 
@@ -537,6 +583,10 @@ public class EditNodeTextField extends EditNodeBase {
 		underlineAction.putValue(Action.NAME, TextUtils.getText("UnderlineAction.text"));
 		underlineAction.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke("control U"));
 
+		strikeThroughAction = new StrikeThroughAction();
+		strikeThroughAction.putValue(Action.NAME, TextUtils.getText("StrikeThroughAction.text"));
+		strikeThroughAction.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke("control shift U"));
+
 		redAction = new CharacterColorAction(TextUtils.getText("simplyhtml.redFontColorLabel"), CSS.Attribute.COLOR, SHTMLPanel.DARK_RED, SHTMLPanel.LIGHT_RED);
 		redAction.putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke("control R"));
 
@@ -595,6 +645,7 @@ public class EditNodeTextField extends EditNodeBase {
 		if (textfield == null) {
 			return;
 		}
+		Toolkit.getDefaultToolkit().removeAWTEventListener((AWTEventListener) textFieldListener);
 		ModeController modeController = nodeView.getMap().getModeController();
         modeController.setBlocked(false);
 		((MTextController)modeController.getExtension(TextController.class)).unsetCurrentBlockingEditor(EditNodeTextField.this);
@@ -604,7 +655,7 @@ public class EditNodeTextField extends EditNodeBase {
 		final IMapViewManager mapViewManager = Controller.getCurrentController().getMapViewManager();
 		mapViewManager.removeMapViewChangeListener(mapViewChangeListener);
 		mapViewChangeListener = null;
-		parent.setPreferredSize(null);
+		parent.preserveLayout(null);
 		if(nodeView.isShowing()) {
 			nodeView.update();
 			preserveRootNodeLocationOnScreen();
@@ -630,6 +681,7 @@ public class EditNodeTextField extends EditNodeBase {
 	private final BoldAction boldAction;
 	private final ItalicAction italicAction;
 	private final UnderlineAction underlineAction;
+	private final StrikeThroughAction strikeThroughAction;
 
 	private final CharacterColorAction redAction;
 	private final CharacterColorAction greenAction;
@@ -647,6 +699,7 @@ public class EditNodeTextField extends EditNodeBase {
 	private int verticalSpace;
 	private int horizontalSpace;
 	private MapViewChangeListener mapViewChangeListener;
+
 
     @Override
     protected JPopupMenu createPopupMenu(JComponent component) {
@@ -672,6 +725,8 @@ public class EditNodeTextField extends EditNodeBase {
 	    formatMenu.add(boldAction);
 	    formatMenu.add(italicAction);
 	    formatMenu.add(underlineAction);
+	    formatMenu.add(strikeThroughAction);
+
 	    formatMenu.add(redAction);
 	    formatMenu.add(greenAction);
 	    formatMenu.add(blueAction);
@@ -735,6 +790,9 @@ public class EditNodeTextField extends EditNodeBase {
 		inputMap.put((KeyStroke) underlineAction.getValue(Action.ACCELERATOR_KEY), "underlineAction");
 		actionMap.put("underlineAction", underlineAction);
 
+		inputMap.put((KeyStroke) strikeThroughAction.getValue(Action.ACCELERATOR_KEY), "strikethroughAction");
+		actionMap.put("strikethroughAction", strikeThroughAction);
+
 		inputMap.put((KeyStroke) redAction.getValue(Action.ACCELERATOR_KEY), "redAction");
 		actionMap.put("redAction", redAction);
 
@@ -794,11 +852,15 @@ public class EditNodeTextField extends EditNodeBase {
 			mapView.validate();
 		final NodeStyleController nsc = NodeStyleController.getController(modeController);
 		maxWidth = Math.max(mapView.getLayoutSpecificMaxNodeWidth(),
-		        Math.max(mapView.getZoomed(nsc.getMaxWidth(node, nodeView.getStyleOption()).toBaseUnitsRounded()), parent.getWidth()));
-		final Icon icon = parent.getIcon();
-		if(icon != null){
-			maxWidth -= mapView.getZoomed(icon.getIconWidth());
-			maxWidth -= mapView.getZoomed(parent.getIconTextGap());
+				Math.max(mapView.getZoomed(nsc.getMaxWidth(node, nodeView.getStyleOption()).toBaseUnitsRounded()), parent.getWidth()));
+		boolean isTextPlacedUnderIcon = parent.getVerticalTextPosition() == SwingConstants.BOTTOM;
+		int reservedIconSpace = 0;
+		if(! isTextPlacedUnderIcon) {
+			final Icon icon = parent.getIcon();
+			if(icon != null){
+				reservedIconSpace = mapView.getZoomed(icon.getIconWidth() + parent.getIconTextGap());
+				maxWidth -= reservedIconSpace;
+			}
 		}
 		Insets parentInsets = parent.getZoomedInsets();
 		maxWidth -= parentInsets.left + parentInsets.right;
@@ -814,7 +876,6 @@ public class EditNodeTextField extends EditNodeBase {
 		SpellCheckerController.getController().enableAutoSpell(textfield, true);
 		mapView.scrollNodeToVisible(nodeView);
 		assert( parent.isValid());
-		final int nodeWidth = parent.getWidth();
 		final int textFieldBorderWidth = 2;
 		textfield.setBorder(new MatteBorder(textFieldBorderWidth, textFieldBorderWidth, textFieldBorderWidth, textFieldBorderWidth,
 				MapView.drawsRectangleForSelection() ? MapView.getSelectionRectangleColor() : nodeView.getTextBackground()));
@@ -831,16 +892,12 @@ public class EditNodeTextField extends EditNodeBase {
 			setLineWrap();
 			textFieldMinimumSize.height = textfield.getPreferredSize().height;
 		}
-		final ZoomableLabelUI parentUI = (ZoomableLabelUI)parent.getUI();
-		final LayoutData layoutData = parentUI.getLayoutData(parent);
-		Rectangle iconR = layoutData.iconR;
-		final Rectangle textR = layoutData.textR;
-		int textFieldX = parentInsets.left - textFieldBorderWidth + (iconR.width > 0 ? textR.x - iconR.x : 0);
-
 
 		final EventBuffer eventQueue = MTextController.getController().getEventQueue();
-		KeyEvent firstEvent = eventQueue.getFirstEvent();
+		AWTEvent firstEvent = eventQueue.getFirstEvent();
 
+		final ZoomableLabelUI parentUI = parent.getUI();
+		final Rectangle textR = parentUI.getAvailableTextR(parent);
 		Point mouseEventPoint = null;
 		if (firstEvent == null) {
 			MouseEvent currentEvent = eventQueue.getMouseEvent();
@@ -855,27 +912,27 @@ public class EditNodeTextField extends EditNodeBase {
 		}
 
 
-		textFieldMinimumSize.width = Math.max(textFieldMinimumSize.width, nodeWidth - textFieldX - (parentInsets.right - textFieldBorderWidth));
-		textFieldMinimumSize.height = Math.max(textFieldMinimumSize.height, textR.height);
-		textFieldMinimumSize.height = Math.max(textFieldMinimumSize.height, iconR.height);
+		textFieldMinimumSize.width = Math.max(textFieldMinimumSize.width, textR.width + 2 * textFieldBorderWidth);
+		textFieldMinimumSize.height = Math.max(textFieldMinimumSize.height, textR.height + 2 * textFieldBorderWidth);
+		int textFieldX = Math.max(0, textR.x  - textFieldBorderWidth);
+		int textFieldY = Math.max(0, textR.y  - textFieldBorderWidth);
 		textfield.setSize(textFieldMinimumSize.width, textFieldMinimumSize.height);
-        verticalSpace = Math.max(0, parent.getHeight() - textFieldMinimumSize.height);
-        int textY = verticalSpace / 2;
-		final Dimension newParentSize = new Dimension(textFieldX + textFieldMinimumSize.width + parentInsets.right,  verticalSpace + textFieldMinimumSize.height);
+        verticalSpace = Math.max(textFieldY, parent.getHeight() - textFieldMinimumSize.height);
+		final Dimension newParentSize = new Dimension(textFieldX + textFieldMinimumSize.width + parentInsets.right,
+				verticalSpace + textFieldMinimumSize.height);
+		if (parent.getEffectiveHorizontalTextPosition() == SwingConstants.LEFT)
+			newParentSize.width += reservedIconSpace;
 		horizontalSpace = newParentSize.width - textFieldMinimumSize.width;
-		final int widthAddedToParent = newParentSize.width - parent.getWidth();
-		final Point location = new Point(textR.x - textFieldBorderWidth, textY);
+		final Point location = new Point(textFieldX, textFieldY);
 
 		final int widthAddedToTextField = textFieldMinimumSize.width - (textR.width + 2 * textFieldBorderWidth);
 		if(widthAddedToTextField > 0){
 			switch(labelHorizontalAlignment){
 			case SwingConstants.CENTER:
-				location.x -= (widthAddedToTextField - widthAddedToParent) / 2;
 				if(mouseEventPoint != null)
 					mouseEventPoint.x += widthAddedToTextField / 2;
 				break;
 			case SwingConstants.RIGHT:
-				location.x -= widthAddedToTextField - widthAddedToParent;
 				if(mouseEventPoint != null)
 					mouseEventPoint.x += widthAddedToTextField;
 				break;
@@ -883,9 +940,8 @@ public class EditNodeTextField extends EditNodeBase {
 		}
 
         preserveRootNodeLocationOnScreen();
-		parent.setPreferredSize(newParentSize);
+		parent.preserveLayout(newParentSize);
 		parent.setText("");
-        parent.setHorizontalAlignment(JLabel.LEFT);
         mapView.onEditingStarted(parent);
         if(getEditControl().getEditType() == EditedComponent.TEXT)
         	nodeView.setTextBackground(getBackground());

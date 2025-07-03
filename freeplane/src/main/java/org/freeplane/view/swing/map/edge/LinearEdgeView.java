@@ -19,12 +19,11 @@
  */
 package org.freeplane.view.swing.map.edge;
 
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.Stroke;
 import java.awt.geom.Line2D;
+import java.awt.geom.Path2D;
 
 import org.freeplane.view.swing.map.NodeView;
 import org.freeplane.view.swing.map.link.CollisionDetector;
@@ -39,45 +38,43 @@ public class LinearEdgeView extends EdgeView {
 
 	@Override
 	protected void draw(final Graphics2D g) {
-		final Color color = getColor();
-		g.setColor(color);
-		final Stroke stroke = getStroke();
-		g.setStroke(stroke);
 		final int w = getWidth();
 		if (w <= 1) {
-			g.drawLine(start.x, start.y, end.x, end.y);
+			g.drawLine(start.x, start.y, shapeStart.x, shapeStart.y);
+			g.drawLine(shapeStart.x, shapeStart.y, end.x, end.y);
 			if (drawHiddenParentEdge()) {
 				g.setColor(g.getBackground());
 				g.setStroke(EdgeView.getEclipsedStroke());
-				g.drawLine(start.x, start.y, end.x, end.y);
-				g.setColor(color);
-				g.setStroke(stroke);
+				g.drawLine(start.x, start.y, shapeStart.x, shapeStart.y);
+				g.drawLine(shapeStart.x, shapeStart.y, end.x, end.y);
 			}
 		}
 		else {
 	        final Point startControlPoint = getControlPoint(getStartConnectorLocation());
 	        final int zoomedXCTRL = w + 1;
-	        final int xctrl = startControlPoint.x * zoomedXCTRL; 
-	        final int yctrl = startControlPoint.y * zoomedXCTRL; 
+	        final int xctrl = startControlPoint.x * zoomedXCTRL;
+	        final int yctrl = startControlPoint.y * zoomedXCTRL;
 	        final Point endControlPoint = getControlPoint(getEndConnectorLocation());
-	        final int childXctrl = endControlPoint.x * zoomedXCTRL; 
-	        final int childYctrl = endControlPoint.y * zoomedXCTRL; 
-			final int xs[] = { start.x, start.x + xctrl, end.x + childXctrl, end.x };
-			final int ys[] = { start.y, start.y + yctrl, end.y + childYctrl, end.y };
+	        final int childXctrl = endControlPoint.x * zoomedXCTRL;
+	        final int childYctrl = endControlPoint.y * zoomedXCTRL;
+			final int xs[] = { start.x, shapeStart.x, shapeStart.x + xctrl, end.x + childXctrl, end.x };
+			final int ys[] = { start.y, shapeStart.y, shapeStart.y + yctrl, end.y + childYctrl, end.y };
 			g.drawPolyline(xs, ys, 4);
 			if (drawHiddenParentEdge()) {
 				g.setColor(g.getBackground());
 				g.setStroke(EdgeView.getEclipsedStroke());
 				g.drawPolyline(xs, ys, 4);
-				g.setColor(color);
-				g.setStroke(stroke);
 			}
 		}
 	}
 
 	@Override
 	public boolean detectCollision(final Point p) {
-		final Line2D line = new Line2D.Float(start, end);
+		final Path2D line = new Path2D.Float();
+		line.moveTo(start.x, start.y);
+		if(start != shapeStart)
+			line.lineTo(shapeStart.x, shapeStart.y);
+		line.lineTo(end.x, end.y);
 		return new CollisionDetector().detectCollision(p, line);
 	}
 }

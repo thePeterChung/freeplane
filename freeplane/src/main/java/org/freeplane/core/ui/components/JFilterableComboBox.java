@@ -8,8 +8,9 @@ package org.freeplane.core.ui.components;
 import java.awt.EventQueue;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
-import java.util.Collection;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -25,45 +26,53 @@ import javax.swing.event.PopupMenuListener;
 
 public class JFilterableComboBox<V> extends JComboBox<V> {
     private static final long serialVersionUID = 1L;
-    private final Supplier<Collection<V>> itemSupplier;
+    private final Supplier<Stream<V>> itemSupplier;
     private boolean filterIsRunning;
-    private BiPredicate<Collection<V>, String> acceptAll;
+    private Predicate<String> acceptAll;
     private BiPredicate<V, String> acceptItem;
+    private BiPredicate<V, String> selectItem;
 
 
-    public JFilterableComboBox(Supplier<Collection<V>> itemSupplier,
-            BiPredicate<Collection<V>, String> acceptAll,
-            BiPredicate<V, String> acceptItem) {
+    public JFilterableComboBox(Supplier<Stream<V>> itemSupplier,
+            Predicate<String> acceptAll,
+            BiPredicate<V, String> acceptItem,
+            BiPredicate<V, String> selectItem) {
         super();
         this.itemSupplier = itemSupplier;
         this.acceptAll = acceptAll;
         this.acceptItem = acceptItem;
-        updateListItems(true);
+        this.selectItem = selectItem;
         Timer timer = new Timer(200, x -> updateListItems(false));
         timer.setRepeats(false);
         DocumentListener documentListener = new DocumentListener() {
             @Override
             public void removeUpdate(DocumentEvent e) {
-                if(! filterIsRunning)
-                    timer.restart();
+                updateList();
             }
+
 
             @Override
             public void insertUpdate(DocumentEvent e) {
-                if(! filterIsRunning)
-                    timer.restart();
+                updateList();
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                if(! filterIsRunning)
+                updateList();
+            }
+
+            private void updateList() {
+                if(! filterIsRunning) {
+                    resetSelectedItem();
                     timer.restart();
+                }
             }
         };
         addPopupMenuListener(new PopupMenuListener() {
 
             @Override
             public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                resetSelectedItem();
                 updateListItems(false);
                 JTextField textField = (JTextField) getEditor().getEditorComponent();
                 textField.getDocument().addDocumentListener(documentListener);
@@ -107,26 +116,47 @@ public class JFilterableComboBox<V> extends JComboBox<V> {
         return filterIsRunning;
     }
 
+
+    private void resetSelectedItem() {
+        if(filterIsRunning)
+            return;
+        filterIsRunning = true;
+        setSelectedItem(null);
+        filterIsRunning = false;
+    }
+
     private void updateListItems(boolean init) {
         if(filterIsRunning)
             return;
         filterIsRunning = true;
+        getModel().removeAllElements();
         try {
-            final DefaultComboBoxModel<V> model = (DefaultComboBoxModel<V>) getModel();
-            model.removeAllElements();
+            final DefaultComboBoxModel<V> model = getModel();
             JTextField textField = (JTextField) getEditor().getEditorComponent();
             final String text = textField.getText();
-            Collection<V> items = itemSupplier.get();
-            final Stream<V> tagStream = items.stream();
-            if(init || acceptAll.test(items, text)) {
-                tagStream.forEach(model::addElement);
-            } else
-                tagStream
-                .filter(item -> acceptItem.test(item, text))
-                .forEach(model::addElement);
+            final Stream<V> tagStream = itemSupplier.get();
+            final Stream<V> addedItems;
+            addedItems = init || acceptAll.test(text) ? tagStream
+                    : tagStream.filter(item -> acceptItem.test(item, text));
+            AtomicInteger index = new AtomicInteger(-1);
+            addedItems.forEach(item -> {
+                model.addElement(item);
+                if (index.get() == -1 && selectItem.test(item, text)) {
+                    index.set(model.getSize() - 1);
+                }
+            });
+            int firstMatchingIndex = index.get();
+            if(firstMatchingIndex >= 0)
+                setSelectedIndex(firstMatchingIndex);
+
         } finally {
           filterIsRunning = false;
         }
+    }
+
+    @Override
+    public DefaultComboBoxModel<V> getModel() {
+         return (DefaultComboBoxModel<V>) super.getModel();
     }
 
 }

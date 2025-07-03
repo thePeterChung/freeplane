@@ -33,6 +33,7 @@ import org.freeplane.core.ui.ControllerPopupMenuListener;
 import org.freeplane.core.ui.IMouseListener;
 import org.freeplane.core.ui.components.PopupDialog;
 import org.freeplane.core.ui.components.UITools;
+import org.freeplane.core.util.Compat;
 import org.freeplane.features.link.Connectors;
 import org.freeplane.features.link.LinkController;
 import org.freeplane.features.map.IMapSelection;
@@ -49,12 +50,17 @@ import org.freeplane.view.swing.map.MapView;
  * The MouseListener which belongs to MapView
  */
 public class DefaultMapMouseListener implements IMouseListener {
+    protected int originX = -1;
+    protected int originY = -1;
+    private RectangleMemorizer rectangleMemorizer;
+
 
 	public DefaultMapMouseListener() {
+	    rectangleMemorizer = new RectangleMemorizer();
 	}
 
 	protected void handlePopup(final MouseEvent e) {
-		if (e.isPopupTrigger()) {
+		if (Compat.isPopupTrigger(e)) {
 			Component popup = null;
 			final Component popupForModel;
 			final MapView mapView = (MapView) Controller.getCurrentController().getMapViewManager().getMapViewComponent();
@@ -91,7 +97,7 @@ public class DefaultMapMouseListener implements IMouseListener {
 			    UITools.setBounds(window, eventLocation.x, eventLocation.y, window.getWidth(), window.getHeight());
 			    window.setVisible(true);
 			}
-
+			e.consume();
 		}
 	}
 
@@ -131,38 +137,45 @@ public class DefaultMapMouseListener implements IMouseListener {
 		final MapView mapView = MapView.getMapView(e.getComponent());
 		if(mapView != null)
 			mapView.select();
-		if (e.isPopupTrigger()) {
+		if (Compat.isPopupTrigger(e)) {
 			handlePopup(e);
+            e.consume();
+            return;
 		}
-		else if (e.getButton() == MouseEvent.BUTTON1){
+		boolean isCtrlEvent = Compat.isCtrlEvent(e) || Compat.isCtrlShiftEvent(e);
+        if(isCtrlEvent && e.getButton() == MouseEvent.BUTTON1
+		     || !isCtrlEvent && e.getButton() == MouseEvent.BUTTON3)
+		    rectangleMemorizer.mousePressed(e);
+        if(! isCtrlEvent && e.getButton() == MouseEvent.BUTTON1){
 			if(mapView != null){
 				mapView.setMoveCursor(true);
 				originX = e.getX();
 				originY = e.getY();
 			}
+			e.consume();
 		}
-		e.consume();
 	}
 
-	@Override
+    @Override
 	public void mouseReleased(final MouseEvent e) {
+        rectangleMemorizer.mouseReleased(e);
+        if(e.isConsumed())
+            return;
 		final MapView mapView = MapView.getMapView(e.getComponent());
 		if(mapView != null)
 			mapView.setMoveCursor(false);
 		originX = -1;
 		originY = -1;
 		handlePopup(e);
-		e.consume();
 	}
-	// // 	final private Controller controller;
-	protected int originX = -1;
-	protected int originY = -1;
-
 	/**
 	 *
 	 */
 	@Override
 	public void mouseDragged(final MouseEvent e) {
+        rectangleMemorizer.mouseDragged(e);
+        if(e.isConsumed())
+            return;
 		final JComponent component = (JComponent) e.getComponent();
 		final MapView mapView = MapView.getMapView(component);
 		if(mapView == null)
@@ -180,6 +193,7 @@ public class DefaultMapMouseListener implements IMouseListener {
 				originX += dx/3;
 				originY += dy/3;
 			}
+			e.consume();
 		}
 	}
 }

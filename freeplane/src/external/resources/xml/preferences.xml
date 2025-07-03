@@ -42,6 +42,7 @@
 				<path name="default_save_dir" dir="true"/>
 			</separator>
 			<separator name="automatic_save">
+				<boolean name="automatically_overwrite_mindmap_files" />
 				<time_period name="time_for_automatic_save" />
 				<boolean name="single_backup_directory" />
 				<path name="single_backup_directory_path" dir="true" />
@@ -49,6 +50,8 @@
 				<number name="number_of_different_files_for_automatic_save"
 					min="0" max="25" />
 				<number name="backup_file_number" min="0" max="25" />
+				<boolean name="saveQuickFilters"/>
+				<number name="savedConditionLimit" min="0" max="1000"/>
 			</separator>
 			<separator name="export">
 				<number name="exported_image_resolution_dpi" min="72" max="2400" />
@@ -90,7 +93,8 @@
 		<tab name="Appearance">
 			<separator name="look_and_feel">
 				<group name="lookandfeel" />
-				<number name="monitor_size_inches" min="1" max="200" step="0.1" />
+                <number name="monitor_size_inches" min="1" max="200" step="0.1" />
+                <number name="display_scale" min="50" max="200" />
 				<boolean name="resources_use_default_font_for_notes_too" />
 				<boolean name="resources_use_margin_top_zero_for_notes" />
 				<boolean name="show_menu_icons"/>
@@ -121,6 +125,7 @@
 					<choice value="antialias_all" />
 					<choice value="antialias_none" />
 				</combo>
+				<boolean name="antialias_during_scrolling" />
 			</separator>
 			<separator name="svg_icons">
 				<boolean name="antialias_svg" />
@@ -128,7 +133,7 @@
 			<separator name="size_limits">
 				<number name="max_shortened_text_length" />
 				<number name="max_image_width" />
-				<length name="foldingsymbolwidth" defaultUnit = "pt" min="3" max = "50" step = "1" />
+				<length name="foldingsymbolsize" defaultUnit = "pt" min="3" max = "50" step = "1" />
 				<length name="foldingSwitchMinWidth" defaultUnit = "pt" min="3" max = "50" step = "1" />
 				<length name="statesymbolwidth"  defaultUnit = "pt" min="3" max = "50" step = "1"/>
 				<length name="dragging_area_width" defaultUnit = "pt" min="3" max = "50" step = "1" />
@@ -161,8 +166,8 @@
 				<boolean name="add_emojis_to_menu" />
 				<boolean name="add_emojis_to_icon_toolbar" />
 				<boolean name="add_emojis_to_icon_selector" />
-				<boolean name="show_icons" />
-				<boolean name="showLinkSpecificIcons" />
+                <boolean name="showLinkSpecificIcons" />
+                <boolean name="show_bookmark_icons" />
 				<number name="fast_access_icon_number" min="0" max="100"/>
 			</separator>
 		</tab>
@@ -184,6 +189,7 @@
 			</separator>
 			<separator name="tags" text="tags">
 				<string name="category_separator" />
+				<boolean name="showTagsOnMinimizedNodes"/>
 			</separator>
 			<separator name="selection_colors">
 				<boolean name="standarddrawrectangleforselection" />
@@ -202,9 +208,9 @@
 					<choice value="first" />
 					<choice value="last" />
 				</combo>
-                <boolean name="unfold_on_navigation" />
-                <boolean name="unfold_on_paste" />
 				<boolean name="fold_on_click_inside" />
+				<boolean name="unfold_on_navigation" />
+				<boolean name="unfold_on_paste" />
 				<boolean name="edit_on_double_click" />
 				<boolean name="openLinksOnPlainClicks"/>
 				<length name="grid_size" defaultUnit = "px" min="0" max = "1000" step = "0.01"/>
@@ -212,8 +218,6 @@
 				<number name="map_view_zoom_step" min="1" max="100" />
 				<boolean name="zoomAroundSelectedNode"/>
 				<boolean name="keepSelectedNodeVisible"/>
-				<boolean name="scrollOnSelect"/>
-				<boolean name="scrollOnUnfold"/>
 				<boolean name="goto_note_end_on_edit" />
 				<combo name="key_type_action">
 					<choice value="EDIT_CURRENT" />
@@ -286,18 +290,23 @@
 				<boolean name="cut_nodes_without_question" />
 				<boolean name="remove_notes_without_question" />
 			</separator>
-			<separator name="selection_method">
+			<separator name="selection">
 				<combo name="selection_method">
 					<choice value="selection_method_direct" />
 					<choice value="selection_method_delayed" />
 					<choice value="selection_method_by_click" />
 				</combo>
+				<combo name="siblingSelection" enum="org.freeplane.view.swing.map.SiblingSelection"/>
 				<number name="time_for_delayed_selection" />
-				<boolean name="center_selected_node" />
-				<boolean name="slow_scroll_selected_node" />
+				<boolean name="synchronizeSelectionOnlyOnBranchChange" />
 			</separator>
-			<separator name="scrollbar">
+			<separator name="scrollling">
 				<number name="scrollbar_increment" />
+				<boolean name="slow_scroll_selected_node" />
+				<boolean name="center_selected_node" />
+				<boolean name="scrollOnSelect"/>
+				<boolean name="scrollOnUnfold"/>
+				<boolean name="autoscroll_disabled_for_mouse_interaction" />
 			</separator>
 			<separator name="tooltip">
 				<boolean name="show_node_tooltips" />
@@ -317,12 +326,6 @@
 			</separator>
 		</tab>
 		<tab name="HTML">
-			<separator name="browser">
-				<string name="default_browser_command_windows_nt" />
-				<string name="default_browser_command_windows_9x" />
-				<string name="default_browser_command_other_os" />
-				<string name="default_browser_command_mac" />
-			</separator>
 			<separator name="html_export">
 				<combo name="html_export_folding">
 					<choice value="html_export_no_folding" />

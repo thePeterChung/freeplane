@@ -59,6 +59,7 @@ public class HorizontalEdgeView extends EdgeView {
 	            start.x -= getWidth() / 2;
 	        else if(getStartConnectorLocation() == ConnectorLocation.LEFT)
                 start.x += getWidth() / 2;
+	        shapeStart = start;
 	        return;
 	    }
 
@@ -110,10 +111,6 @@ public class HorizontalEdgeView extends EdgeView {
 
     @Override
 	protected void draw(final Graphics2D g) {
-		final Color color = getColor();
-		g.setColor(color);
-		final Stroke stroke = getStroke();
-		g.setStroke(stroke);
 		NodeView source = getSource();
         boolean usesHorizontalLayout = source.usesHorizontalLayout();
         boolean areChildrenApart = source.getChildNodesAlignment().isStacked();
@@ -143,8 +140,6 @@ public class HorizontalEdgeView extends EdgeView {
 		    g.setColor(g.getBackground());
 			g.setStroke(EdgeView.getEclipsedStroke());
 			g.drawPolyline(xs, ys, xs.length);
-			g.setColor(color);
-			g.setStroke(stroke);
 		}
 	}
 

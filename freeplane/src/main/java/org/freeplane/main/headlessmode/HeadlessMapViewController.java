@@ -24,7 +24,6 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.image.RenderedImage;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -141,12 +140,12 @@ public class HeadlessMapViewController implements IMapViewManager {
 	}
 
 	@Override
-	public RenderedImage createImage(int dpi) {
+	public RenderedImage createImage(int dpi, int imageType) {
 		throw new RuntimeException("Method not implemented");
 	}
 
 	@Override
-	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int dpi) {
+	public RenderedImage createImage(final Dimension slideSize, NodeModel placedNode, NodePosition placedNodePosition, int dpi, int imageType) {
 		throw new RuntimeException("Method not implemented");
 	}
 
@@ -191,7 +190,7 @@ public class HeadlessMapViewController implements IMapViewManager {
 	}
 
 	@Override
-	public List<? extends Component> getMapViewVector() {
+	public List<? extends Component> getMapViews() {
 		return Collections.emptyList();
 	}
 
@@ -289,6 +288,11 @@ public class HeadlessMapViewController implements IMapViewManager {
 		return Collections.emptyList();
 	}
 
+	@Override
+	public boolean containsView(MapModel map) {
+		 return false;
+	}
+
 	public JScrollPane getScrollPane() {
 		throw new RuntimeException("Method not implemented");
 	}
@@ -304,16 +308,6 @@ public class HeadlessMapViewController implements IMapViewManager {
 
 	@Override
 	public void setMapTitles() {
-	}
-
-	@Override
-	public Object setEdgesRenderingHint(Graphics2D g) {
-		throw new RuntimeException("Method not implemented");
-	}
-
-	@Override
-	public void setTextRenderingHint(Graphics2D g) {
-		throw new RuntimeException("Method not implemented");
 	}
 
 	public boolean closeAllMaps() {
@@ -341,10 +335,6 @@ public class HeadlessMapViewController implements IMapViewManager {
 	@Override
 	public void setFoldedOnCurrentView(NodeModel node, boolean folded) {
 		throw new RuntimeException("Method not implemented");
-	}
-
-	@Override
-	public void onQuitApplication() {
 	}
 
 	@Override

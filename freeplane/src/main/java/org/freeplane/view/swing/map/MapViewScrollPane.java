@@ -1,5 +1,5 @@
 /*
- *  Freeplane - mind map editor
+ q*  Freeplane - mind map editor
  *  Copyright (C) 2008 Dimitry Polivaev
  *
  *  This file author is Dimitry Polivaev
@@ -29,6 +29,8 @@ import java.awt.event.ActionListener;
 import java.awt.event.HierarchyEvent;
 import java.awt.event.HierarchyListener;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
@@ -55,16 +57,23 @@ import org.freeplane.view.swing.features.filepreview.ScalableComponent;
 public class MapViewScrollPane extends JScrollPane implements IFreeplanePropertyListener {
 	private static final Dimension INVISIBLE = new Dimension(0,  0);
 	public static final Rectangle EMPTY_RECTANGLE = new Rectangle();
-	public interface ViewportHiddenAreaSupplier {
-		Rectangle getHiddenArea();
+
+	@FunctionalInterface
+	public interface ViewportReservedAreaSupplier {
+		Rectangle getReservedArea();
 	}
+
 	@SuppressWarnings("serial")
     static class MapViewPort extends JViewport{
-		private ViewportHiddenAreaSupplier hiddenAreaSupplier = () -> EMPTY_RECTANGLE;
+		private List<ViewportReservedAreaSupplier> reservedAreaSuppliers = new ArrayList<>();
 		private boolean layoutInProgress = false;
 
-		void setHiddenAreaSupplier(ViewportHiddenAreaSupplier hiddenAreaSupplier) {
-			this.hiddenAreaSupplier = hiddenAreaSupplier;
+		void addReservedAreaSupplier(ViewportReservedAreaSupplier supplier) {
+			removeReservedAreaSupplier(supplier);
+			this.reservedAreaSuppliers.add(supplier);
+		}
+		void removeReservedAreaSupplier(ViewportReservedAreaSupplier supplier) {
+			this.reservedAreaSuppliers.remove(supplier);
 		}
 
 
@@ -93,6 +102,9 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
         private Timer timer;
 
 		private ScalableComponent backgroundComponent;
+		private boolean scrollsRectangleToVisible;
+		private Point targetViewPosition;
+		private int scrollingDelay = 0;
 
         public void setBackgroundComponent(ScalableComponent backgroundComponent) {
             this.backgroundComponent = backgroundComponent;
@@ -101,58 +113,145 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
 
 
         @Override
-        public void scrollRectToVisible(Rectangle newContentRectangle) {
-        	final Rectangle hiddenArea = hiddenAreaSupplier.getHiddenArea();
-        	if(hiddenArea.width != 0 && hiddenArea.height != 0) {
-        		Point viewportLocation = new Point(0, 0);
-        		UITools.convertPointToAncestor(this, viewportLocation, JScrollPane.class);
-        		hiddenArea.x -= viewportLocation.x;
-        		hiddenArea.y -= viewportLocation.y;
-        		final boolean isHiddenAreaAtTheLeft = hiddenArea.x == 0;
-				final boolean isHiddenAreaAtTheTop = hiddenArea.y == 0;
-				final boolean isHiddenAreaAtTheRight = hiddenArea.x + hiddenArea.width == getWidth();
-				final boolean isHiddenAreaAtTheBottom = hiddenArea.y + hiddenArea.height == getHeight();
-				if(isHiddenAreaAtTheLeft || isHiddenAreaAtTheRight
-						|| isHiddenAreaAtTheTop || isHiddenAreaAtTheBottom) {
-        			final Rectangle newContentRectangleWithHiddenArea = new Rectangle(newContentRectangle);
-        			int dx = positionAdjustment(getWidth(), newContentRectangle.width, newContentRectangle.x);
-        			int dy = positionAdjustment(getHeight(), newContentRectangle.height, newContentRectangle.y);
-        			final boolean overlapsOnXAxis = newContentRectangle.x + dx < hiddenArea.x + hiddenArea.width
-        					&& newContentRectangle.x + dx + newContentRectangle.width > hiddenArea.x;
-        			final boolean overlapsOnYAxis = newContentRectangle.y + dy < hiddenArea.y + hiddenArea.height
-        				&& newContentRectangle.y + dy + newContentRectangle.height > hiddenArea.y;
-					if (overlapsOnYAxis && overlapsOnXAxis) {
-        				final boolean isWidthSufficient = hiddenArea.width + newContentRectangle.width < getWidth();
-						if(isWidthSufficient
-        						&& (isHiddenAreaAtTheLeft || isHiddenAreaAtTheRight)) {
-        					if(isHiddenAreaAtTheLeft) {
-        						newContentRectangleWithHiddenArea.x -= hiddenArea.width;
-        						newContentRectangleWithHiddenArea.width += hiddenArea.width;
-        					}
-        					else if (isHiddenAreaAtTheRight){
-        						newContentRectangleWithHiddenArea.width += hiddenArea.width;
-        					}
-        				} else {
-							final boolean isHeightSufficient = hiddenArea.height  + newContentRectangle.height < getHeight();
-							if(isHeightSufficient) {
-								if(isHiddenAreaAtTheTop) {
-									newContentRectangleWithHiddenArea.y -= hiddenArea.height;
-									newContentRectangleWithHiddenArea.height += hiddenArea.height;
-								}
-								else if (isHiddenAreaAtTheBottom){
-									newContentRectangleWithHiddenArea.height += hiddenArea.height;
-								}
-							}
-						}
-        			}
-        			super.scrollRectToVisible(newContentRectangleWithHiddenArea);
-        			return;
-
-        		}
+        public void scrollRectToVisible(final Rectangle contentRectangle) {
+            int width = getWidth();
+			int height = getHeight();
+        	boolean isTooWide = contentRectangle.width >= width;
+			boolean isTooHigh = contentRectangle.height >= height;
+			final int targetDX, targetDY;
+			if(targetViewPosition != null) {
+				final Component view = getView();
+				targetDX = -targetViewPosition.x - view.getX();
+				targetDY = -targetViewPosition.y - view.getY();
+				contentRectangle.x += targetDX;
+				contentRectangle.y += targetDY;
+			}
+			else
+				targetDX=targetDY=0;
+			if(isTooWide && isTooHigh) {
+        		scrollRectToVisibleWithoutAdjustment(contentRectangle);
         	}
-        	super.scrollRectToVisible(newContentRectangle);
+			else {
+                // Start with a copy of the original rectangle.
+                Rectangle candidateRect = new Rectangle(contentRectangle);
+    			int dx = positionAdjustment(getWidth(), contentRectangle.width, contentRectangle.x);
+    			int dy = positionAdjustment(getHeight(), contentRectangle.height, contentRectangle.y);
+
+                // Compute the maximum insets from all reserved area suppliers.
+                // These insets represent the area reserved (i.e. the overlays) on each side.
+                int leftInset = 0, rightInset = 0, topInset = 0, bottomInset = 0;
+    			for(ViewportReservedAreaSupplier supplier : reservedAreaSuppliers) {
+                    Rectangle reservedArea = supplier.getReservedArea();
+                    if(reservedArea.width == 0 || reservedArea.height == 0)
+                        continue;
+                    // Translate reservedArea to viewport coordinates.
+                    Rectangle r = new Rectangle(reservedArea);
+                    r.x -= getX();
+                    if(r.x < 0) {
+                        r.width += r.x; // reduce width by the negative offset
+                        r.x = 0;
+                    }
+                    r.y -= getY();
+                    if(r.y < 0) {
+                        r.height += r.y;
+                        r.y = 0;
+                    }
+                    if(r.x + r.width > width)
+                        r.width = width - r.x;
+                    if(r.y + r.height > height)
+                        r.height = height - r.y;
+
+                    // Determine which side the reserved area is drawn on.
+                    boolean isOnTheLeft = r.x == 0;
+                    boolean isOnTheRight = r.x + r.width == width;
+                    boolean isAtTheTop = r.y == 0;
+                    boolean isAtTheBottom = r.y + r.height == height;
+                    if(! (isOnTheLeft || isOnTheRight || isAtTheTop || isAtTheBottom))
+                    	continue;
+        			final boolean overlapsOnXAxis = contentRectangle.x + dx < r.x + r.width
+        					&& contentRectangle.x + dx + contentRectangle.width > r.x;
+        			final boolean overlapsOnYAxis = contentRectangle.y + dy < r.y + r.height
+        				&& contentRectangle.y + dy + contentRectangle.height > r.y;
+
+                    if(! (overlapsOnXAxis && overlapsOnYAxis))
+                    	continue;
+
+    				if(isOnTheLeft && ! isOnTheRight && ! isTooWide && (isAtTheTop == isAtTheBottom || r.width < r.height || isTooHigh)) {
+                        leftInset = Math.max(leftInset, r.width);
+                    }
+    				else if(isOnTheRight && ! isOnTheLeft && ! isTooWide && (isAtTheTop == isAtTheBottom || r.width < r.height || isTooHigh)) {
+                        rightInset = Math.max(rightInset, r.width);
+                    }
+    				else if(isAtTheTop && ! isAtTheBottom && ! isTooHigh && (isOnTheRight == isOnTheLeft || r.height <= r.width || isTooWide)) {
+                        topInset = Math.max(topInset, r.height);
+                    }
+    				else if(isAtTheBottom && ! isAtTheTop && ! isTooHigh && (isOnTheRight == isOnTheLeft || r.height <= r.width || isTooWide)) {
+                        bottomInset = Math.max(bottomInset, r.height);
+                    }
+                }
+
+                // --- Horizontal adjustment ---
+                boolean adjustLeft = leftInset > 0 && contentRectangle.x < leftInset;
+                boolean adjustRight = rightInset > 0 &&
+                        (contentRectangle.x + contentRectangle.width) > (width - rightInset);
+
+                if(adjustLeft && !adjustRight && leftInset >= rightInset) {
+                    candidateRect.x = contentRectangle.x - leftInset;
+                    candidateRect.width = contentRectangle.width + leftInset;
+                }
+                else if(adjustRight && !adjustLeft && rightInset >= leftInset) {
+                    candidateRect.width = contentRectangle.width + rightInset;
+                }
+                else if(adjustLeft && adjustRight) {
+                    candidateRect.x = contentRectangle.x - leftInset;
+                    candidateRect.width = contentRectangle.width + leftInset + rightInset;
+                }
+
+                // --- Vertical adjustment ---
+                boolean adjustTop = topInset > 0 && contentRectangle.y < topInset;
+                boolean adjustBottom = bottomInset > 0 &&
+                        (contentRectangle.y + contentRectangle.height) > (height - bottomInset);
+
+                if(adjustTop && !adjustBottom && topInset >= bottomInset) {
+                    candidateRect.y = contentRectangle.y - topInset;
+                    candidateRect.height = contentRectangle.height + topInset;
+                }
+                else if(adjustBottom && !adjustTop && bottomInset >= topInset) {
+                    candidateRect.height = contentRectangle.height + bottomInset;
+                }
+                else if(adjustTop && adjustBottom) {
+                    candidateRect.y = contentRectangle.y - topInset;
+                    candidateRect.height = contentRectangle.height + topInset + bottomInset;
+                }
+
+                scrollRectToVisibleWithoutAdjustment(candidateRect);
+    		}
+			contentRectangle.x -= targetDX;
+			contentRectangle.y -= targetDY;
         }
-        private int positionAdjustment(int parentWidth, int childWidth, int childAt)    {
+
+		private void scrollRectToVisibleWithoutAdjustment(final Rectangle contentRectangle) {
+			boolean scrollsRectangleToVisible = this.scrollsRectangleToVisible;
+			this.scrollsRectangleToVisible = true;
+			try {
+				super.scrollRectToVisible(contentRectangle);
+			}
+			finally {
+				this.scrollsRectangleToVisible =scrollsRectangleToVisible;
+			}
+		}
+
+
+
+        @Override
+		public Point getViewPosition() {
+        	if(targetViewPosition != null && scrollsRectangleToVisible)
+        		return targetViewPosition;
+        	else
+        		return super.getViewPosition();
+		}
+
+		private int positionAdjustment(int parentWidth, int childWidth, int childAt)    {
 
             //   +-----+
             //   | --- |     No Change
@@ -178,7 +277,6 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
 
             return 0;
         }
-
         @Override
         public void paintComponent(Graphics g) {
             if(backgroundComponent != null) {
@@ -196,10 +294,10 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
         @Override
 		public void setViewPosition(Point p) {
 			if(! layoutInProgress) {
-				Integer scrollingDelay = (Integer) getClientProperty(ViewController.SLOW_SCROLLING);
-				if(scrollingDelay != null && scrollingDelay != 0){
-					putClientProperty(ViewController.SLOW_SCROLLING, null);
-					slowSetViewPosition(p, scrollingDelay);
+				if(scrollingDelay != 0){
+					if(targetViewPosition == null)
+						SwingUtilities.invokeLater(this::slowSetViewPosition);
+					targetViewPosition = p;
 				} else {
 					stopTimer();
 					layoutInProgress = true;
@@ -246,22 +344,40 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
 	        }
         }
 
-		private void slowSetViewPosition(final Point p, final int delay) {
+		private void slowSetViewPosition() {
 			stopTimer();
-			final Point viewPosition = getViewPosition();
-	        int dx = p.x - viewPosition.x;
-	        int dy = p.y - viewPosition.y;
-	        int slowDx = calcScrollIncrement(dx);
-	        int slowDy = calcScrollIncrement(dy);
-	        viewPosition.translate(slowDx, slowDy);
-	        super.setViewPosition(viewPosition);
-	        if(slowDx == dx && slowDy == dy)
-	            return;
-	        timer = new Timer(delay, new ActionListener() {
+			final Point currentViewPosition = super.getViewPosition();
+			if(targetViewPosition == null)
+				return;
+			if(isValid()) {
+				int dx = targetViewPosition.x - currentViewPosition.x;
+				int dy = targetViewPosition.y - currentViewPosition.y;
+				int slowDx = calcScrollIncrement(dx);
+				int slowDy = calcScrollIncrement(dy);
+				currentViewPosition.translate(slowDx, slowDy);
+				boolean layoutWasInProgress = layoutInProgress;
+				layoutInProgress = true;
+				try {
+					super.setViewPosition(currentViewPosition);
+				}
+				finally {
+					layoutInProgress = layoutWasInProgress;
+				}
+				if(slowDx == dx && slowDy == dy) {
+					targetViewPosition = null;
+					scrollingDelay = 0;
+					MapView view = (MapView)getView();
+					if (view != null) {
+						view.setAnchorContentLocation();
+					}
+					return;
+				}
+			}
+	        timer = new Timer(scrollingDelay, new ActionListener() {
 				@Override
 				public void actionPerformed(ActionEvent e) {
 					timer = null;
-					MapViewPort.this.slowSetViewPosition(p, delay);
+					MapViewPort.this.slowSetViewPosition();
 				}
 			});
 	        timer.setRepeats(false);
@@ -276,15 +392,20 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
 		}
 
 		private int calcScrollIncrement(int dx) {
+			if(scrollingDelay == 0)
+				return dx;
 			int v = ResourceController.getResourceController().getIntProperty("scrolling_speed");
 			final int absDx = Math.abs(dx);
 			final double sqrtDx = Math.sqrt(absDx);
-			final int slowDX = (int) Math.max(absDx * sqrtDx / 20, 20 * sqrtDx) * v / 100;
+			final int slowDX = (int) Math.max(absDx * sqrtDx / scrollingDelay, scrollingDelay * sqrtDx) * v / 100;
 			if (Math.abs(dx) > 2 && slowDX < Math.abs(dx)) {
 	            dx = slowDX * Integer.signum(dx);
             }
 			return dx;
         }
+		void startSlowScrolling(int scrollingDelay) {
+			this.scrollingDelay = scrollingDelay;
+		}
 	}
 	/**
 	 *
@@ -368,8 +489,12 @@ public class MapViewScrollPane extends JScrollPane implements IFreeplaneProperty
 		repaint();
     }
 
-	public void setViewportHiddenAreaSupplier(ViewportHiddenAreaSupplier hiddenAreaSupplier) {
-		((MapViewPort)getViewport()).setHiddenAreaSupplier(hiddenAreaSupplier);
+	public void addViewportReservedAreaSupplier(ViewportReservedAreaSupplier supplier) {
+		((MapViewPort)getViewport()).addReservedAreaSupplier(supplier);
+	}
+
+	public void removeReservedAreaSupplier(ViewportReservedAreaSupplier supplier) {
+		((MapViewPort)getViewport()).removeReservedAreaSupplier(supplier);
 	}
 
 

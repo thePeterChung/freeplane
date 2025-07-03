@@ -19,8 +19,13 @@
  */
 package org.freeplane.main.mindmapmode;
 
+import java.awt.AWTEvent;
 import java.awt.Component;
 import java.awt.Container;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+import java.awt.event.InputMethodEvent;
 import java.awt.event.KeyEvent;
 
 import javax.swing.Box;
@@ -59,6 +64,7 @@ import org.freeplane.features.attribute.mindmapmode.MAttributeController;
 import org.freeplane.features.attribute.mindmapmode.RemoveAllAttributesAction;
 import org.freeplane.features.attribute.mindmapmode.RemoveFirstAttributeAction;
 import org.freeplane.features.attribute.mindmapmode.RemoveLastAttributeAction;
+import org.freeplane.features.bookmarks.mindmapmode.BookmarksController;
 import org.freeplane.features.clipboard.ClipboardControllers;
 import org.freeplane.features.clipboard.mindmapmode.MClipboardControllers;
 import org.freeplane.features.cloud.CloudController;
@@ -77,6 +83,7 @@ import org.freeplane.features.icon.IconController;
 import org.freeplane.features.icon.hierarchicalicons.HierarchicalIcons;
 import org.freeplane.features.icon.mindmapmode.IconSelectionPlugin;
 import org.freeplane.features.icon.mindmapmode.MIconController;
+import org.freeplane.features.icon.mindmapmode.TagPanelManager;
 import org.freeplane.features.layout.LayoutController;
 import org.freeplane.features.layout.mindmapmode.MLayoutController;
 import org.freeplane.features.link.LinkController;
@@ -84,7 +91,6 @@ import org.freeplane.features.link.mindmapmode.MLinkController;
 import org.freeplane.features.map.AlwaysUnfoldedNode;
 import org.freeplane.features.map.FoldingController;
 import org.freeplane.features.map.FreeNode;
-import org.freeplane.features.map.MapController;
 import org.freeplane.features.map.SummaryNode;
 import org.freeplane.features.map.mindmapmode.ChangeNodeLevelController;
 import org.freeplane.features.map.mindmapmode.MMapController;
@@ -139,7 +145,6 @@ import org.freeplane.view.swing.ui.DefaultNodeKeyListener;
 import org.freeplane.view.swing.ui.UserInputListenerFactory;
 import org.freeplane.view.swing.ui.mindmapmode.MMapMouseListener;
 import org.freeplane.view.swing.ui.mindmapmode.MNodeDragListener;
-import org.freeplane.view.swing.ui.mindmapmode.MNodeDropListener;
 import org.freeplane.view.swing.ui.mindmapmode.MNodeMotionListener;
 import org.freeplane.view.swing.ui.mindmapmode.MNodeMouseWheelListener;
 
@@ -170,9 +175,12 @@ public class MModeControllerFactory {
 		    JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		UITools.setScrollbarIncrement(styleScrollPane);
 		final JTabbedPane tabs = UITools.getFreeplaneTabbedPanel();
-		tabs.add(TextUtils.getText("format_panel"), styleScrollPane);
-		tabs.add(TextUtils.getText("attributes_attribute"), createAttributesPanel());
+		tabs.addTab("", ResourceController.getResourceController().getIcon("/images/panelTabs/formatTab.svg?useAccentColor=true"),
+		        styleScrollPane, TextUtils.getText("format_panel"));
+		tabs.addTab("", ResourceController.getResourceController().getIcon("/images/panelTabs/attributeTab.svg?useAccentColor=true"),
+		        createAttributesPanel(), TextUtils.getText("attributes_and_tags"));
         HierarchicalIcons.install(modeController);
+        modeController.addExtension(BookmarksController.class, new BookmarksController(modeController));
 		new AutomaticLayoutController();
 		new BlinkingNodeHook();
 		SummaryNode.install();
@@ -210,7 +218,39 @@ public class MModeControllerFactory {
 
 	private JComponent createAttributesPanel() {
 		final JPanel tablePanel = new AttributePanelManager(modeController).getTablePanel();
-		final JScrollPane attributeScrollPane = new JScrollPane(tablePanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+		JPanel tagPanel = new TagPanelManager(modeController).getTagPanel();
+
+		JPanel panel = new JPanel(new GridBagLayout());
+		GridBagConstraints gbc = new GridBagConstraints();
+		gbc.gridx = 0;
+		gbc.insets = new Insets(5, 5, 5, 5);
+		gbc.anchor = GridBagConstraints.NORTH;
+		gbc.fill = GridBagConstraints.HORIZONTAL;
+		gbc.weightx = 1.0;
+
+		// Component 1
+		gbc.gridy = 0;
+		panel.add(tablePanel, gbc);
+
+		// Separator
+		gbc.gridy = 1;
+		gbc.insets = new Insets(0, 5, 0, 5);
+		panel.add(new javax.swing.JSeparator(), gbc);
+
+		// Component 2
+		gbc.gridy = 2;
+		gbc.insets = new Insets(5, 5, 5, 5);
+		panel.add(tagPanel, gbc);
+
+		// Filler to push components to the top
+		gbc.gridy = 3;
+		gbc.weighty = 1.0;
+		JPanel filler = new JPanel();
+		filler.setOpaque(false);
+		panel.add(filler, gbc);
+
+		final JScrollPane attributeScrollPane = new JScrollPane(panel,
+		    JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
 		    JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
 		UITools.setScrollbarIncrement(attributeScrollPane);
 		return attributeScrollPane;
@@ -253,8 +293,9 @@ public class MModeControllerFactory {
 		MMapExplorerController.install(modeController, textController);
 		LinkController.install(new MLinkController(modeController));
 		NodeStyleController.install(new MNodeStyleController(modeController));
-		userInputListenerFactory.setNodeDragListener(new MNodeDragListener());
-		userInputListenerFactory.setNodeDropTargetListener(new MNodeDropListener());
+		MNodeDragListener nodeDragListener = new MNodeDragListener();
+		userInputListenerFactory.setNodeDragListener(nodeDragListener);
+		userInputListenerFactory.setNodeDropTargetListener(nodeDragListener.createDropListener());
 		LocationController.install(new MLocationController());
 		LayoutController.install(new MLayoutController());
 		final MLogicalStyleController logicalStyleController = new MLogicalStyleController(modeController);
@@ -263,7 +304,7 @@ public class MModeControllerFactory {
 		AttributeController.install(new MAttributeController(modeController));
 		userInputListenerFactory.setNodeKeyListener(new DefaultNodeKeyListener(new IEditHandler() {
 			@Override
-			public void edit(final KeyEvent e, final FirstAction action, final boolean editLong) {
+			public void edit(final AWTEvent e, final FirstAction action, final boolean editLong) {
 				((MTextController) MTextController.getController(modeController)).getEventQueue().activate(e);
 				textController.edit(action, editLong);
 			}

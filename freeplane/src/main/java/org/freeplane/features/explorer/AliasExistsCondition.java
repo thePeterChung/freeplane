@@ -19,6 +19,11 @@
  */
 package org.freeplane.features.explorer;
 
+import java.awt.FontMetrics;
+import java.util.List;
+
+import javax.swing.Icon;
+
 import org.freeplane.core.util.TextUtils;
 import org.freeplane.features.filter.condition.ASelectableCondition;
 import org.freeplane.features.filter.condition.ConditionFactory;
@@ -39,8 +44,13 @@ class AliasExistsCondition extends ASelectableCondition {
 	protected String createDescription() {
 		final String condition = TextUtils.getText(MapExplorerConditionController.FILTER_ALIAS);
 		final String simpleCondition = TextUtils.getText(ConditionFactory.FILTER_EXIST);
-		return ConditionFactory.createDescription(condition, simpleCondition, null);
+		return createDescription(condition, simpleCondition, null);
 	}
+
+    @Override
+    protected List<Icon> createRenderedIcons(FontMetrics fontMetrics) {
+        return createRenderedIconsFromDescription(fontMetrics);
+    }
 
 	@Override
 	protected String getName() {
@@ -51,5 +61,5 @@ class AliasExistsCondition extends ASelectableCondition {
 	public boolean checkNode(NodeModel node) {
 		return !NodeAlias.getAlias(node).isEmpty();
 	}
-	
+
 }

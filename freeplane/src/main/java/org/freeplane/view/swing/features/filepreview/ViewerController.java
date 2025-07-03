@@ -16,11 +16,12 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.Set;
 
 import javax.swing.JComponent;
-import javax.swing.JFileChooser;
+import org.freeplane.api.swing.JFileChooser;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -40,6 +41,7 @@ import org.freeplane.features.map.MapController;
 import org.freeplane.features.map.MapModel;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.map.NodeModel.Side;
+import org.freeplane.features.map.mindmapmode.InsertionRelation;
 import org.freeplane.features.map.mindmapmode.MMapController;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.ModeController;
@@ -466,7 +468,6 @@ public class ViewerController extends PersistentNodeHook implements INodeViewLif
 	}
 
 	static private ExternalImagePopupMenu imagePopupMenu;
-	static final int VIEWER_POSITION = NodeView.DETAIL_VIEWER_POSITION + 3;
 	private final MyMouseListener mouseListener = new MyMouseListener();
 	final private Set<IViewerFactory> factories;
     private final CombiFactory combiFactory;
@@ -640,7 +641,7 @@ public class ViewerController extends PersistentNodeHook implements INodeViewLif
 		final Set<NodeView> viewers = resource.getViewers();
 		viewers.add(view);
 		viewer.setBounds(viewer.getX() - 5, viewer.getY() - 5, viewer.getWidth() + 15, viewer.getHeight() + 15);
-		view.addContent(viewer, VIEWER_POSITION);
+		view.addContent(viewer, NodeView.IMAGE_VIEWER_POSITION);
 		if(map.getModeController().canEdit()){
 			final DropTarget dropTarget = new DropTarget(viewer, DTL);
 			dropTarget.setActive(true);
@@ -658,7 +659,7 @@ public class ViewerController extends PersistentNodeHook implements INodeViewLif
 		if (!viewers.contains(nodeView)) {
 			return;
 		}
-		nodeView.removeContent(VIEWER_POSITION);
+		nodeView.removeContent(NodeView.IMAGE_VIEWER_POSITION);
 		viewers.remove(nodeView);
 	}
 
@@ -778,13 +779,28 @@ public class ViewerController extends PersistentNodeHook implements INodeViewLif
 	}
 
 	public static enum PasteMode{
-		AS_SIBLING, AS_CHILD, INSIDE;
-		public static PasteMode valueOf(boolean asSibling){
-			return asSibling ? AS_SIBLING : AS_CHILD;
+		AS_SIBLING_BEFORE(InsertionRelation.AS_SIBLING_BEFORE, Side.AS_SIBLING_BEFORE),
+		AS_SIBLING_AFTER(InsertionRelation.AS_SIBLING_AFTER, Side.AS_SIBLING_AFTER),
+		AS_CHILD(InsertionRelation.AS_CHILD, Side.DEFAULT),
+		INSIDE(null, null);
+
+		static private final EnumMap<Side, PasteMode> bySide = new EnumMap<>(Side.class);
+		static {
+			bySide.put(Side.AS_SIBLING_BEFORE, AS_SIBLING_BEFORE);
+			bySide.put(Side.AS_SIBLING_AFTER, AS_SIBLING_AFTER);
 		}
-		public static PasteMode valueOf(Side side){
-			return side == Side.AS_SIBLING ? AS_SIBLING : AS_CHILD;
+		public static PasteMode bySide(Side side) {
+			return bySide.getOrDefault(side, AS_CHILD);
 		}
+
+		public final InsertionRelation insertionRelation;
+		public final Side side;
+		private PasteMode(InsertionRelation insertionRelation, Side side) {
+			this.insertionRelation = insertionRelation;
+			this.side = side;
+		}
+
+
 	}
 
 	public boolean paste(final File file, final NodeModel targetNode, final PasteMode mode) {
@@ -819,9 +835,9 @@ public class ViewerController extends PersistentNodeHook implements INodeViewLif
 		}
 		else {
 			node = mapController.newNode(file.getName(), targetNode.getMap());
-			boolean asSibling = mode.equals(PasteMode.AS_SIBLING);
-			node.setSide(MapController.suggestNewChildSide(targetNode, asSibling ? Side.AS_SIBLING : Side.DEFAULT));
-			mapController.insertNode(node, targetNode, asSibling);
+			InsertionRelation relation =  mode.insertionRelation;
+			node.setSide(MapController.suggestNewChildSide(targetNode, mode.side));
+			mapController.insertNode(node, targetNode, relation);
 		}
 		final ExternalResource preview = new ExternalResource(uri);
 		undoableDeactivateHook(node);

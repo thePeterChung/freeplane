@@ -23,7 +23,6 @@ import org.freeplane.core.resources.ResourceController;
 import org.freeplane.features.help.OpenURLAction;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.mindmapmode.MModeController;
-import org.freeplane.plugin.codeexplorer.archunit.ArchUnitServer;
 import org.freeplane.plugin.codeexplorer.configurator.CodeProjectController;
 import org.freeplane.plugin.codeexplorer.map.CodeMap;
 import org.freeplane.plugin.codeexplorer.map.CodeMapController;
@@ -31,9 +30,8 @@ import org.freeplane.plugin.codeexplorer.map.CodeMapController;
 public class CodeModeController extends MModeController {
 	static public final String MODENAME = "CodeExplorer";
 
-	CodeModeController(final Controller controller, ArchUnitServer archUnitServer) {
+	CodeModeController(final Controller controller) {
 		super(controller);
-		addExtension(CodeProjectController.class, new CodeProjectController(this, archUnitServer));
         addAction(new OpenURLAction("code.explorerDocumentation",
                 ResourceController.getResourceController().getProperty("code.explorerDocumentationUrl")));
 		addAction(new OpenURLAction("code.introductionVideo",
@@ -57,7 +55,8 @@ public class CodeModeController extends MModeController {
 
 		}
 		super.startup();
-		getExtension(CodeProjectController.class).startupController();
+		CodeProjectController projectController = getExtension(CodeProjectController.class);
+        projectController.startupController();
 	}
 
 	@Override

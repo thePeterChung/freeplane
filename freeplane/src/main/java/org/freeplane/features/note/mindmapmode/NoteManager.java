@@ -157,20 +157,22 @@ class NoteManager implements INodeSelectionListener, IMapSelectionListener, IMap
 		    notePanel.setViewedContent("", bodyCssRule, noteStyleSheet, noteForeground, noteBackground);
 			return;
 		}
+        if (ignoreEditorUpdate) {
+            return;
+        }
 		final String note = this.node != null ? NoteModel.getNoteText(this.node) : null;
 		if (note != null) {
 			try {
 			    TextController textController = TextController.getController();
-				final Object transformedContent = textController.getTransformedObject(node, NoteModel.getNote(node), note);
+				final Object transformedContent = textController.getTransformedObject(node, NoteModel.getNote(node), note, null);
 				Icon icon = textController.getIcon(transformedContent);
 				if(icon != null)
 					notePanel.setViewedImage(icon, noteStyleAccessor.getHorizontalAlignment());
 				else if (transformedContent == note) {
-					if (ignoreEditorUpdate) {
-						return;
-					}
 					notePanel.removeDocumentListener();
-					notePanel.setEditedContent(note, bodyCssRule, noteStyleSheet, noteForeground, noteBackground);
+					String noteContentType = noteController.getNoteContentType(node);
+					String editedContent = TextController.isHtmlContentType(noteContentType) ? HtmlUtils.textToHTML(note) : note;
+					notePanel.setEditedContent(editedContent, bodyCssRule, noteStyleSheet, noteForeground, noteBackground);
 					SwingUtilities.invokeLater(new Runnable() {
 						@Override
 						public void run() {

@@ -57,8 +57,13 @@ public class SortedComboBoxModel<T> extends AbstractListModel<T> implements Comb
 
     @Override
     public void add(final T element) {
-		addIfNotExists(element);
-	}
+        addIfNotExists(element);
+    }
+
+    public T addAndReturn(final T element) {
+        int index = addIfNotExists(element);
+        return getElementAt(index >= 0 ? index : - index - 1);
+    }
 
 	public int addIfNotExists(final T element) {
         final int addedElementIndex = addImpl(element);
@@ -196,4 +201,11 @@ public class SortedComboBoxModel<T> extends AbstractListModel<T> implements Comb
     public Stream<T> stream() {
        return model.stream();
     }
+
+    @Override
+    public String toString() {
+        return "SortedComboBoxModel [" + model + "]";
+    }
+
+
 }

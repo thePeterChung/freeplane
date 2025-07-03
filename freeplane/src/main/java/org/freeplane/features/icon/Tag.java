@@ -19,10 +19,11 @@ import org.freeplane.core.ui.components.HSLColorConverter;
 import org.freeplane.core.util.LineComparator;
 
 public class Tag implements Comparable<Tag>{
-    public final static Tag EMPTY_TAG = new Tag("");
+    public final static Tag EMPTY_TAG = new Tag("", Color.BLACK);
     public final static Tag REMOVED_TAG = new Tag(" removed tag ", Color.BLACK);
     private final String content;
     private Color color;
+    private Tag alternativeTag;
 
     public static Color getDefaultColor(String content) {
         if(content.isEmpty())
@@ -40,6 +41,14 @@ public class Tag implements Comparable<Tag>{
         this.color = color;
     }
 
+    public Tag getAlternativeTag() {
+        return alternativeTag;
+    }
+
+    public void setAlternativeTag(Tag colorChainTag) {
+        this.alternativeTag = colorChainTag;
+    }
+
     public String getContent() {
         return content;
     }
@@ -55,6 +64,8 @@ public class Tag implements Comparable<Tag>{
 
     public void setColor(Color color) {
         this.color = color;
+        if(alternativeTag != null && alternativeTag.getColor() != color)
+            alternativeTag.setColor(color);
     }
 
     public Color getColor() {
@@ -69,13 +80,6 @@ public class Tag implements Comparable<Tag>{
         return new Tag(content, color);
     }
 
-    public Tag removeInternalCategories(String tagCategorySeparator) {
-        if(tagCategorySeparator.isEmpty() || isEmpty())
-            return this;
-        final int tagIndex = getContent().lastIndexOf(tagCategorySeparator);
-        return tagIndex == -1 ? this : new Tag(getContent().substring(tagIndex + tagCategorySeparator.length()), getColor());
-    }
-
     public List<Tag> categoryTags(String tagCategorySeparator) {
         if(tagCategorySeparator.isEmpty() || isEmpty())
             return Collections.singletonList(this);
@@ -86,7 +90,7 @@ public class Tag implements Comparable<Tag>{
                 .collect(Collectors.toList());
     }
 
-    public Tag shortTag(String tagCategorySeparator) {
+    public Tag withoutCategories(String tagCategorySeparator) {
         if(tagCategorySeparator.isEmpty() || isEmpty())
             return this;
         int shortTagBegin = content.lastIndexOf(tagCategorySeparator);
@@ -132,4 +136,11 @@ public class Tag implements Comparable<Tag>{
             return new Tag(content.replace(initialSeparator, currentSeparator), color);
         }
     }
+
+	public Tag qualifiedTag() {
+		return alternativeTag != null
+				&& alternativeTag.getContent().length() > getContent().length()
+				? alternativeTag
+				: this;
+	}
 }

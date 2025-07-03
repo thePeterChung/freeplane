@@ -123,7 +123,7 @@ public class Compat {
 	}
 
 	public static void macAppChanges() {
-		if (!Compat.isMacOsX()) {
+		if (!Compat.isMacOsX() || Compat.isJavaVersionLessThan(Compat.JAVA_VERSION_15)) {
 			return;
 		}
 		try {
@@ -177,7 +177,18 @@ public class Compat {
 
 	protected static void findApplicationUserDirectory() {
 		final String userFpDirByProperty = System.getProperty(FREEPLANE_USERDIR_PROPERTY);
-		final String userFpDirPath = userFpDirByProperty != null ? userFpDirByProperty : getDefaultFreeplaneUserDirectory();
+		final String userFpDirPath;
+		if (userFpDirByProperty != null) {
+			if(Compat.isWindowsOS() && userFpDirByProperty.startsWith("%APPDATA%\\")) {
+				String appdataDirectory = System.getenv("APPDATA");
+				userFpDirPath = appdataDirectory + userFpDirByProperty.substring("%APPDATA%\\".length() - 1);
+				System.setProperty(FREEPLANE_USERDIR_PROPERTY, userFpDirPath);
+			}
+			else
+				userFpDirPath = userFpDirByProperty;
+		}
+		else
+			userFpDirPath = getDefaultFreeplaneUserDirectory();
 		try {
 			userFpDir = new File(userFpDirPath).getCanonicalPath();
 		} catch (IOException e) {
@@ -216,9 +227,13 @@ public class Compat {
         				);
     }
 
-	static public boolean isCtrlEvent(final MouseEvent e) {
-         return isExtendedCtrlEvent(e, 0);
-    }
+    static public boolean isCtrlEvent(final MouseEvent e) {
+        return isExtendedCtrlEvent(e, 0);
+   }
+
+    static public boolean isPopupTrigger(final MouseEvent e) {
+        return e.isPopupTrigger() && ! e.isShiftDown() && ! e.isAltDown() && ! e.isAltGraphDown();
+   }
 
 	public static boolean isCtrlShiftEvent(MouseEvent e) {
 		return isExtendedCtrlEvent(e, InputEvent.SHIFT_DOWN_MASK);

@@ -23,7 +23,9 @@ import java.awt.Component;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +54,7 @@ import org.freeplane.features.map.NodeDeletionEvent;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.map.NodeMoveEvent;
 import org.freeplane.features.map.NodeWriter;
+import org.freeplane.features.map.ITooltipProvider.TooltipTrigger;
 import org.freeplane.features.mode.CombinedPropertyChain;
 import org.freeplane.features.mode.Controller;
 import org.freeplane.features.mode.IPropertyHandler;
@@ -70,7 +73,7 @@ public class LogicalStyleController implements IExtension {
     private static final int STYLE_TOOLTIP = 0;
 	private WeakReference<NodeModel> cachedNode;
     private Collection<IStyle>  cachedStyles;
-    private List<IStyle>  cachedStylesForSeletedNode;
+    private List<IStyle>  cachedStylesForSelectedNode;
 	final private CombinedPropertyChain<Collection<IStyle>, NodeModel> styleHandlers;
 
 	public LogicalStyleController(ModeController modeController) {
@@ -98,19 +101,20 @@ public class LogicalStyleController implements IExtension {
 		});
 		addStyleGetter(IPropertyHandler.DEFAULT, new IPropertyHandler<Collection<IStyle>, NodeModel>() {
 			public Collection<IStyle> getProperty(NodeModel node, LogicalStyleController.StyleOption option, Collection<IStyle> currentValue) {
-				add(node, currentValue, MapStyleModel.DEFAULT_STYLE);
+			    if(! MapStyleModel.isDefaultStyleNode(node))
+			        add(node, currentValue, MapStyleModel.DEFAULT_STYLE);
 				return currentValue;
 			}
 		});
 		modeController.addToolTipProvider(STYLE_TOOLTIP, new ITooltipProvider() {
-			public String getTooltip(ModeController modeController, NodeModel node, Component view) {
+			public String getTooltip(ModeController modeController, NodeModel node, Component view, TooltipTrigger tooltipTrigger) {
 				if(!ResourceController.getResourceController().getBooleanProperty("show_styles_in_tooltip"))
 					return null;
-				final Collection<IStyle> styles = getStyles(node, StyleOption.FOR_UNSELECTED_NODE);
-				if(styles.size() > 0)
-					styles.remove(styles.iterator().next());
+				final Iterator<IStyle> styles = getStyles(node, StyleOption.FOR_UNSELECTED_NODE).iterator();
+				if(styles.hasNext())
+					styles.next();
 				final String label = TextUtils.getText("node_styles");
-				return HtmlUtils.plainToHTML(label + ": " + getStyleNames(styles, ", "));
+				return HtmlUtils.plainToHTML(label + ": " + getStyleNames(() -> styles, ", "));
 			}
 		});
 	}
@@ -313,15 +317,16 @@ public class LogicalStyleController implements IExtension {
 		if(cachedNode == null || !node.equals(cachedNode.get())) {
 		    cachedStyles = null;
 		    cachedNode = null;
-		    cachedStyles = styleHandlers.getProperty(node, option, new LinkedHashSet<IStyle>());
+		    cachedStyles = Collections.unmodifiableCollection(styleHandlers.getProperty(node, option, new LinkedHashSet<IStyle>()));
 		    cachedNode = new WeakReference<NodeModel>(node);
-		    cachedStylesForSeletedNode = new ArrayList<>(cachedStyles.size() + 1);
-		    cachedStylesForSeletedNode.add(MapStyleModel.SELECTION_STYLE);
-		    cachedStylesForSeletedNode.addAll(cachedStyles);
+		    List<IStyle> withSelectedNode = new ArrayList<>(cachedStyles.size() + 1);
+		    withSelectedNode.add(MapStyleModel.SELECTION_STYLE);
+		    withSelectedNode.addAll(cachedStyles);
+		    cachedStylesForSelectedNode =  Collections.unmodifiableList(withSelectedNode);
 		}
-		return option == StyleOption.FOR_SELECTED_NODE ? cachedStylesForSeletedNode :
+		return option == StyleOption.FOR_SELECTED_NODE ? cachedStylesForSelectedNode :
 		    option == StyleOption.FOR_UNSELECTED_NODE ? cachedStyles :
-		        cachedStylesForSeletedNode.subList(2, cachedStylesForSeletedNode.size())    ;
+		        cachedStylesForSelectedNode.subList(2, cachedStylesForSelectedNode.size())    ;
 	}
 
 	public void moveConditionalStyleDown(final ConditionalStyleModel conditionalStyleModel, int index) {
@@ -383,7 +388,7 @@ public class LogicalStyleController implements IExtension {
 		return styleHandlers.addGetter(key, getter);
 	}
 
-	public String getStyleNames(final Collection<IStyle> styles, String separator) {
+	public String getStyleNames(final Iterable<IStyle> styles, String separator) {
 	    StringBuilder sb = new StringBuilder();
 	    int i = 0;
 	    for(IStyle style :styles){

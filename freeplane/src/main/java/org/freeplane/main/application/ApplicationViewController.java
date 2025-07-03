@@ -24,11 +24,8 @@ import java.awt.Component;
 import java.awt.ComponentOrientation;
 import java.awt.Container;
 import java.awt.Cursor;
-import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.Frame;
-import java.awt.GraphicsDevice;
-import java.awt.GraphicsEnvironment;
 import java.awt.Image;
 import java.awt.KeyboardFocusManager;
 import java.awt.LayoutManager;
@@ -51,6 +48,7 @@ import javax.swing.JFrame;
 import javax.swing.JSplitPane;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
+
 import org.freeplane.core.resources.ResourceController;
 import org.freeplane.core.ui.components.FreeplaneMenuBar;
 import org.freeplane.core.ui.components.UITools;
@@ -95,6 +93,8 @@ class ApplicationViewController extends FrameController {
 		controller.addAction(navigationPreviousMap);
 		navigationNextMap = new NavigationNextMapAction();
 		controller.addAction(navigationNextMap);
+		controller.addAction(new NavigationMapNextViewAction());
+		controller.addAction(new NavigationMapPreviousViewAction());
 		resourceController = (ApplicationResourceController) ResourceController.getResourceController();
 		this.frame = frame;
 	}
@@ -393,9 +393,8 @@ class ApplicationViewController extends FrameController {
 	    mapViewWindows.loadLayout();
     }
 
-	public void focusTo(MapView currentMapView) {
-	    mapViewWindows.focusMapViewLater(currentMapView);
-
+	public void focusTo(MapView currentMapView, Runnable onFocus) {
+	    mapViewWindows.focusMapViewLater(currentMapView, onFocus);
     }
 
 	@Override
@@ -420,7 +419,7 @@ class ApplicationViewController extends FrameController {
 
 	@Override
 	public Component getCurrentRootComponent() {
-		final Component mapViewComponent = controller.getMapViewManager().getMapViewComponent();
+		final Component mapViewComponent = selectedMapView();
 		return mapViewComponent != null ? SwingUtilities.getRoot(mapViewComponent) : frame;
 	}
 
@@ -432,5 +431,19 @@ class ApplicationViewController extends FrameController {
 	@Override
 	public List<? extends Component> getMapViewVector() {
 		return mapViewWindows != null ? mapViewWindows.getMapViewVector() : null;
+	}
+
+	@Override
+	public void openMapNextView() {
+		mapViewWindows.selectMapNextView(selectedMapView());
+	}
+
+	@Override
+	public void openMapPreviousView() {
+		mapViewWindows.selectMapPreviousView(selectedMapView());
+	}
+
+	private  JComponent selectedMapView() {
+		return controller.getMapViewManager().getMapViewComponent();
 	}
 }

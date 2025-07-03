@@ -21,64 +21,57 @@ package org.freeplane.view.swing.map;
 
 import java.awt.Component;
 import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-
 import javax.swing.Icon;
 
-import org.freeplane.features.mode.ModeController;
+import org.freeplane.core.ui.components.UITools;
 
 /**
  * @author Dimitry Polivaev
  * Mar 5, 2011
  */
 class ArrowIcon implements Icon{
-	/**
-     * 
-     */
-    private final NodeView nodeView;
-	final private boolean down;
-	final private static int ARROW_HEIGTH = 5;
-	final private static int ARROW_HALF_WIDTH = 4;
-	final private static int ICON_HEIGTH = ARROW_HEIGTH + 2;
-	final private static int ICON_WIDTH = 1 + ARROW_HALF_WIDTH * 2 + 1;
-	
 
-	public ArrowIcon(NodeView nodeView, boolean down) {
+	public final static ArrowIcon UP = new ArrowIcon(false);
+	public final static ArrowIcon DOWN = new ArrowIcon(true);
+	/**
+     *
+     */
+	final private boolean down;
+	final private static int ARROW_HEIGHT = (int) (5 * UITools.FONT_SCALE_FACTOR);
+	final private static int ARROW_HALF_WIDTH = (int) (4 * UITools.FONT_SCALE_FACTOR);
+	final private static int ICON_HEIGHT = ARROW_HEIGHT + 2;
+	final private static int ICON_WIDTH = 1 + ARROW_HALF_WIDTH * 2 + 1;
+
+
+	private ArrowIcon(boolean down) {
         super();
-		this.nodeView = nodeView;
         this.down = down;
     }
 
 	public int getIconHeight() {
-		return ICON_HEIGTH; 
+		return ICON_HEIGHT;
     }
 
 	public int getIconWidth() {
-		return ICON_WIDTH; 
+		return ICON_WIDTH;
     }
 
 	public void paintIcon(Component c, Graphics g, int x, int y) {
 		int[]   xs = new int[3];
 		int[]   ys = new int[3];
-		
+
 		xs[0] = 1 + ARROW_HALF_WIDTH;
 		xs[1] = 1;
 		xs[2] = xs[0] + ARROW_HALF_WIDTH;
 		if(down){
-			ys[0] = 1 + ARROW_HEIGTH;
+			ys[0] = 1 + ARROW_HEIGHT;
 			ys[1] = ys[2] = 1;
 		}
 		else{
 			ys[0] = 1;
-			ys[1] = ys[2] = 1 + ARROW_HEIGTH;
+			ys[1] = ys[2] = 1 + ARROW_HEIGHT;
 		}
-		Graphics2D g2= (Graphics2D) g;
-		final Object renderingHint = g2.getRenderingHint(RenderingHints.KEY_ANTIALIASING);
-		ModeController modeController = this.nodeView.getMap().getModeController();
-		modeController.getController().getMapViewManager().setEdgesRenderingHint(g2);
-		g.drawPolygon(xs, ys, 3); 
-		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, renderingHint);
+		g.drawPolygon(xs, ys, 3);
     }
-	
+
 }

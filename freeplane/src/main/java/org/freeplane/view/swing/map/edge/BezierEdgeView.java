@@ -19,12 +19,10 @@
  */
 package org.freeplane.view.swing.map.edge;
 
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.Stroke;
-import java.awt.geom.CubicCurve2D;
+import java.awt.geom.GeneralPath;
 
 import org.freeplane.view.swing.map.NodeView;
 import org.freeplane.view.swing.map.link.CollisionDetector;
@@ -42,38 +40,47 @@ public class BezierEdgeView extends EdgeView {
 
 	@Override
 	protected void draw(final Graphics2D g) {
-		final CubicCurve2D.Float graph = update();
-		final Color color = getColor();
-		g.setColor(color);
-		final Stroke stroke = getStroke();
-		g.setStroke(stroke);
+		final GeneralPath graph = update();
 		g.draw(graph);
 		if (drawHiddenParentEdge()) {
 			g.setColor(g.getBackground());
 			g.setStroke(EdgeView.getEclipsedStroke());
 			g.draw(graph);
-			g.setStroke(stroke);
-			g.setColor(color);
 		}
 	}
 
-	private CubicCurve2D.Float update() {
+	private GeneralPath update() {
         final Point startControlPoint = getControlPoint(getStartConnectorLocation());
         final int zoomedXCTRL = getMap().getZoomed(XCTRL);
-        final int xctrl = startControlPoint.x * zoomedXCTRL; 
-        final int yctrl = startControlPoint.y * zoomedXCTRL; 
+        final int xctrl = startControlPoint.x * zoomedXCTRL;
+        final int yctrl = startControlPoint.y * zoomedXCTRL;
         final Point endControlPoint = getControlPoint(getEndConnectorLocation());
         final int zoomedChildXCTRL = getMap().getZoomed(CHILD_XCTRL);
-        final int childXctrl = endControlPoint.x * zoomedChildXCTRL; 
-        final int childYctrl = endControlPoint.y * zoomedChildXCTRL; 
-		final CubicCurve2D.Float graph = new CubicCurve2D.Float();
-		graph.setCurve(start.x, start.y, start.x + xctrl, start.y + yctrl, end.x + childXctrl, end.y  + childYctrl, end.x, end.y);
+        final int childXctrl = endControlPoint.x * zoomedChildXCTRL;
+        final int childYctrl = endControlPoint.y * zoomedChildXCTRL;
+
+		final GeneralPath graph = new GeneralPath();
+
+		if(start != shapeStart) {
+			graph.moveTo(start.x, start.y);
+			graph.lineTo(shapeStart.x, shapeStart.y);
+		}
+		else {
+			graph.moveTo(shapeStart.x, shapeStart.y);
+		}
+
+		graph.curveTo(
+		    shapeStart.x + xctrl, shapeStart.y + yctrl,
+		    end.x + childXctrl, end.y + childYctrl,
+		    end.x, end.y
+		);
+
 		return graph;
 	}
-	
+
 	@Override
 	public boolean detectCollision(final Point p) {
-		final CubicCurve2D.Float graph = update();
+		final GeneralPath graph = update();
 		return new CollisionDetector().detectCollision(p, graph);
 	}
 }

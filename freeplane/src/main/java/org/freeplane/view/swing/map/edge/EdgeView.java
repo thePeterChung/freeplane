@@ -24,6 +24,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.RenderingHints;
 import java.awt.Stroke;
 
 import org.freeplane.api.ChildNodesAlignment;
@@ -53,14 +54,14 @@ public abstract class EdgeView {
     }
 
     private final NodeView source;
-    protected Point start, end;
+    protected Point start, shapeStart, end;
 
-    public void setStart(Point start) {
-        this.start = start;
+    public void setShapeStart(Point shapeStart) {
+    	this.shapeStart = this.start = shapeStart;
     }
 
-    public Point getStart() {
-        return start;
+    public Point getShapeStart() {
+        return shapeStart;
     }
 
     public void setEnd(Point end) {
@@ -92,18 +93,20 @@ public abstract class EdgeView {
                     start = mainView.getBottomPoint();
                     startConnectorLocation = ConnectorLocation.BOTTOM;
                 } else {
-                    start = mainView.getTopPoint();
+                	start = mainView.getTopPoint();
                     startConnectorLocation = ConnectorLocation.TOP;
                 }
-            }
-            else if(target.isTopOrLeft()){
-                start = mainView.getRightPoint();
-                startConnectorLocation = ConnectorLocation.RIGHT;
-            }
-            else{
-                start = mainView.getLeftPoint();
-                startConnectorLocation = ConnectorLocation.LEFT;
-            }
+            } else {
+				if(target.isTopOrLeft()){
+					start = mainView.getRightPoint();
+				    startConnectorLocation = ConnectorLocation.RIGHT;
+				}
+				else{
+					start = mainView.getLeftPoint();
+				    startConnectorLocation = ConnectorLocation.LEFT;
+				}
+			}
+            shapeStart = start;
             if(target.isTopOrLeft()){
                 end = targetMainView.getRightPoint();
                 endConnectorLocation = ConnectorLocation.RIGHT;
@@ -127,8 +130,37 @@ public abstract class EdgeView {
             relativeLocation.x = - relativeLocation.x + mainView.getWidth()/2 + end.x;
             relativeLocation.y = - relativeLocation.y + mainView.getHeight()/2 + end.y;
 
-            startConnectorLocation = mainView.getConnectorLocation(relativeLocation, LayoutOrientation.NOT_SET,  ChildNodesAlignment.NOT_SET);
-            start = mainView.getConnectorPoint(relativeLocation, startConnectorLocation);
+            if(source.isAutoCompactLayoutEnabled() && usesHorizontalLayout && ! source.isRoot()) {
+                if(target.isTopOrLeft()){
+                	start = mainView.getTopPoint();
+                    startConnectorLocation = ConnectorLocation.TOP;
+                }
+                else{
+                	start = mainView.getBottomPoint();
+                    startConnectorLocation = ConnectorLocation.BOTTOM;
+                }
+            }
+            else {
+            	startConnectorLocation = mainView.getConnectorLocation(relativeLocation, LayoutOrientation.NOT_SET,  ChildNodesAlignment.NOT_SET);
+            	start = mainView.getConnectorPoint(relativeLocation, startConnectorLocation);
+            }
+        	final boolean needsSpaceForFoldingMark = source.isAutoCompactLayoutEnabled() && !childNodesAlignment.isStacked() && ! source.isRoot();
+			if(needsSpaceForFoldingMark) {
+				switch (startConnectorLocation) {
+				case LEFT:
+					shapeStart = new Point(start.x - source.getZoomedFoldingMarkHalfWidth(2), start.y);
+					break;
+				case RIGHT:
+					shapeStart = new Point(start.x + source.getZoomedFoldingMarkHalfWidth(2), start.y);
+					break;
+				default:
+					shapeStart = start;
+					break;
+				}
+		    }
+			else
+				shapeStart = start;
+
         }
     }
 
@@ -172,12 +204,23 @@ public abstract class EdgeView {
         }
     }
 
-    public Color getColor() {
-        if (color == null) {
+    public Color getColor(Graphics2D g) {
+    	Color color = getColor();
+    	if (getWidth() <= 0
+    			&& g.getRenderingHint(RenderingHints.KEY_ANTIALIASING).equals(RenderingHints.VALUE_ANTIALIAS_OFF)) {
+    		int newAlpha = (color.getAlpha() & 0xFF) / 8;
+    		int newColor = (color.getRGB() & 0x00FFFFFF) | (newAlpha << 24); // Combine new alpha with RGB
+    		return new Color(newColor, true);
+    	}
+    	return color;
+    }
+
+	public Color getColor() {
+		if (color == null) {
             color = target.getEdgeColor();
         }
         return color;
-    }
+	}
 
     public void setColor(final Color color) {
         this.color = color;
@@ -248,6 +291,8 @@ public abstract class EdgeView {
     public void paint(final Graphics2D g) {
         final Stroke stroke = g.getStroke();
         final Color color = g.getColor();
+		g.setColor(getColor(g));
+		g.setStroke(getStroke());
         draw(g);
         g.setStroke(stroke);
         g.setColor(color);
@@ -259,6 +304,8 @@ public abstract class EdgeView {
         createStart();
         UITools.convertPointToAncestor(target.getMainView(), end, paintedComponent);
         UITools.convertPointToAncestor(source.getMainView(), start, paintedComponent);
+        if(start != shapeStart && shapeStart != null)
+        	UITools.convertPointToAncestor(source.getMainView(), shapeStart, paintedComponent);
         align(start, end);
     }
 

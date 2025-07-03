@@ -19,8 +19,11 @@
  */
 package org.freeplane.features.icon;
 
+import java.awt.Color;
+import java.awt.FontMetrics;
 import java.util.List;
 
+import org.freeplane.core.ui.components.TagIcon;
 import org.freeplane.features.filter.condition.StringConditionAdapter;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.n3.nanoxml.XMLElement;
@@ -60,20 +63,20 @@ abstract class TagCondition extends StringConditionAdapter {
      */
 	@Override
 	public boolean checkNode(final NodeModel node) {
-	    final TagCategories tagCategories = node.getMap().getIconRegistry().getTagCategories();
-	    final String tagCategorySeparator = tagCategories.getTagCategorySeparator();
 	    final IconController iconController = IconController.getController();
 	    final List<Tag> tags = iconController.getTags(node);
 	    if(searchesAcrossAllCategories()) {
-	        final List<CategorizedTag> categorizedTags = iconController.getCategorizedTags(tags, node.getMap().getIconRegistry().getTagCategories());
-	        for (CategorizedTag tag : categorizedTags) {
-	            if (checkTag(tag, tagCategorySeparator))
+	        final TagCategories tagCategories = node.getMap().getIconRegistry().getTagCategories();
+	        final String tagCategorySeparator = tagCategories.getTagCategorySeparator();
+	        final List<Tag> categorizedTags = iconController.extendCategories(tags, node.getMap().getIconRegistry().getTagCategories());
+	        for (Tag tag : categorizedTags) {
+	            if (checkShortTag(tag, tagCategorySeparator))
 	                return true;
 	        }
 	    }
 	    else {
 	        for (Tag tag : tags) {
-	            if (checkTag(tag, tagCategorySeparator))
+	            if (checkShortTag(tag, ""))
 	                return true;
 
 	        }
@@ -81,7 +84,7 @@ abstract class TagCondition extends StringConditionAdapter {
 	    return false;
 	}
 
-    protected boolean checkTag(Tag tag, String tagCategorySeparator) {
+    protected boolean checkShortTag(Tag tag, String tagCategorySeparator) {
         final String tagContent = tag.getContent();
         return checkText(tagContent) || ! tagCategorySeparator.isEmpty()
                 && tagContent.contains(tagCategorySeparator)
@@ -90,9 +93,8 @@ abstract class TagCondition extends StringConditionAdapter {
                 .anyMatch(this::checkText);
     }
 
-    @SuppressWarnings("unused")
-    protected boolean checkTag(CategorizedTag categorizedTag, String tagCategorySeparatorForMap) {
-        return categorizedTag.categoryTags().stream().anyMatch(tag -> checkText(tag.getContent()));
+    protected boolean checkCategorizedTag(Tag categorizedTag, String tagCategorySeparatorForMap) {
+        return categorizedTag.categoryTags(tagCategorySeparatorForMap).stream().anyMatch(tag -> checkText(tag.getContent()));
     }
 
     protected abstract boolean checkText(String content);
@@ -105,4 +107,13 @@ abstract class TagCondition extends StringConditionAdapter {
     public boolean searchesAcrossAllCategories() {
         return searchesAcrossAllCategories;
     }
+    protected TagIcon tagIcon(FontMetrics fontMetrics) {
+        return tagIcon(comparedValue, fontMetrics);
+    }
+
+    protected TagIcon tagIcon(String value, FontMetrics fontMetrics) {
+        String iconValue = searchesAcrossAllCategories ? value + "*" : value;
+        return new TagIcon(new Tag(iconValue, Color.YELLOW), fontMetrics.getFont());
+    }
+
 }

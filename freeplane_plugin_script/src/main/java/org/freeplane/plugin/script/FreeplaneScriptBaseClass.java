@@ -45,22 +45,31 @@ import groovy.lang.Script;
  * Only documented methods are meant to be used in scripts.
  * <p>The following global objects are provided as shortcuts by the binding of this class:
  * <ul>
- * <li><b>ui:</b> see {@link UITools}</li>
+ * <li><b>ui:</b> see {@link org.freeplane.core.ui.components.UITools UITools}</li>
  * <li><b>logger:</b> see {@link LogUtils}</li>
- * <li><b>htmlUtils:</b> see {@link HtmlUtils}</li>
- * <li><b>textUtils:</b> see {@link TextUtils}</li>
- * <li><b>menuUtils:</b> see {@link MenuUtils}</li>
+ * <li><b>htmlUtils:</b> see {@link org.freeplane.core.util.HtmlUtils HtmlUtils}</li>
+ * <li><b>textUtils:</b> see {@link org.freeplane.core.util.TextUtils TextUtils}</li>
+ * <li><b>menuUtils:</b> see {@link org.freeplane.core.util.MenuUtils MenuUtils}</li>
  * <li><b>config:</b> see {@link ConfigProperties}</li>
  * </ul>
+ * <p>In case you compile groovy source code for packaging it as a jar with a Freeplane add-on, these global objects
+ * are not available. To make them available, add the following import to your source code:</p>
+ * <pre>
+ * import static org.freeplane.plugin.script.GroovyStaticImports.*
+ * </pre>
  * The following classes may also be useful in scripting:
  * <ul>
- * <li>{@link FreeplaneVersion}</li>
+ * <li>{@link org.freeplane.core.util.FreeplaneVersion FreeplaneVersion}</li>
  * </ul>
  */
 public abstract class FreeplaneScriptBaseClass extends Script {
 	/**
-	 * Accessor for Freeplane's configuration: In scripts available
-	 * as "global variable" <code>config</code>.
+	 * <p>Accessor for Freeplane's configuration: In scripts available as "global variable" {@code config}</p>
+     * <p>In case you compile groovy source code for packaging it as a jar with a Freeplane add-on, global variable
+     * {@code config} is not available. To make it available, add the following import:</p>
+     * <pre>
+     * import static org.freeplane.plugin.script.GroovyStaticImports.*
+     * </pre>
 	 */
 	public static class ConfigProperties {
 	    private final ResourceController resourceController = ResourceController.getResourceController();
@@ -379,25 +388,17 @@ public abstract class FreeplaneScriptBaseClass extends Script {
 
 	/** returns valueIfNull if value is null and value otherwise. */
 	public Object ifNull(Object value, Object valueIfNull) {
-		return value == null ? valueIfNull : value;
+		return GroovyStaticImports.ifNull(value, valueIfNull);
 	}
 
 	/** rounds a number to integral type. */
     public Long round(final Double d) {
-            if (d == null)
-                    return null;
-            return Math.round(d);
+    	return GroovyStaticImports.round(d);
     }
 
     /** round to the given number of decimal places: <code>round(0.1234, 2) &rarr; 0.12</code> */
     public Double round(final Double d, final int precision) {
-            if (d == null)
-                    return d;
-            double factor = 1;
-            for (int i = 0; i < precision; i++) {
-                    factor *= 10.;
-            }
-            return Math.round(d * factor) / factor;
+    	return GroovyStaticImports.round(d, precision);
     }
 
     /** parses text to the proper data type, if possible, setting format to the standard. Parsing is configured via
@@ -412,7 +413,7 @@ public abstract class FreeplaneScriptBaseClass extends Script {
      * c.statusInfo = "${d} is ${new Date() - d} days ago"
      * </pre> */
     public Object parse(final String text) {
-        return ScannerController.getController().parse(text);
+    	return GroovyStaticImports.parse(text);
     }
 
     /** uses formatString to return a FormattedObject.
@@ -423,27 +424,26 @@ public abstract class FreeplaneScriptBaseClass extends Script {
      * </pre>
      * @return {@link IFormattedObject} if object is formattable and the unchanged object otherwise. */
     public Object format(final Object object, final String formatString) {
-        return FormatController.format(object, formatString);
+    	return GroovyStaticImports.format(object, formatString);
     }
 
     /** Applies default date-time format for dates or default number format for numbers. All other objects are left unchanged.
      * @return {@link IFormattedObject} if object is formattable and the unchanged object otherwise. */
     public Object format(final Object object) {
-        return FormatController.formatUsingDefault(object);
+    	return GroovyStaticImports.format(object);
     }
 
     /** Applies default date format (instead of standard date-time) format on the given date.
      * @return {@link IFormattedObject} if object is formattable and the unchanged object otherwise. */
     public Object formatDate(final Date date) {
-        final String format = FormatController.getController().getDefaultDateFormat().toPattern();
-        return FormatController.format(date, format);
+        return GroovyStaticImports.format(date);
     }
 
     /** formats according to the internal standard, that is the conversion will be reversible
      * for types that are handled special by the scripting api namely Dates and Numbers.
      * @see Convertible#toString(Object) */
     public String toString(final Object o) {
-        return Convertible.toString(o);
+        return GroovyStaticImports.toString(o);
     }
 
     /** opens a {@link URI} */

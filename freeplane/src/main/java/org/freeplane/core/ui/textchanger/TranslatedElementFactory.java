@@ -9,6 +9,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Icon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
@@ -17,6 +18,7 @@ import javax.swing.JRadioButton;
 import javax.swing.JToggleButton;
 
 import org.freeplane.core.resources.ResourceController;
+import org.freeplane.core.ui.AFreeplaneAction;
 import org.freeplane.core.ui.LabelAndMnemonicSetter;
 import org.freeplane.core.ui.components.JAutoToggleButton;
 import org.freeplane.core.util.TextUtils;
@@ -70,6 +72,15 @@ public class TranslatedElementFactory {
         return component;
     }
 
+    public static JCheckBoxMenuItem createCheckboxMenuItem(String labelKey) {
+        final String text = TextUtils.getRawText(labelKey);
+        final JCheckBoxMenuItem component = new JCheckBoxMenuItem();
+        LabelAndMnemonicSetter.setLabelAndMnemonic(component, text);
+        TranslatedElement.TEXT.setKey(component, labelKey);
+        createTooltip(component, labelKey + ".tooltip");
+        return component;
+    }
+
 	public static JCheckBox createPropertyCheckbox(String propertyName, String labelKey) {
 		JCheckBox component = createCheckBox(labelKey);
         component.setSelected(ResourceController.getResourceController().getBooleanProperty(propertyName));
@@ -104,7 +115,10 @@ public class TranslatedElementFactory {
 		TranslatedElement.TOOLTIP.setKey(component, labelKey);
 	}
 
-	public static JButton createButtonWithIcon(Action action, final String iconKey, final String tooltipKey) {
+    public static JButton createButtonWithIcon(AFreeplaneAction action) {
+        return createButtonWithIcon(action, action.getIconKey(), action.getTextKey());
+    }
+    public static JButton createButtonWithIcon(Action action, final String iconKey, final String tooltipKey) {
 		final Icon icon = ResourceController.getResourceController().getImageIcon(iconKey);
 		final JButton button;
 		if (action == null)
