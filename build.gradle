@@ -221,6 +221,7 @@ configure(subprojects.findAll {it.name =~ /plugin/}) {
    ext.bundleActivator = pluginid + ".Activator"
    
     task copyOSGiJars(type: Copy) {
+        dependsOn jar
         from ("$buildDir/libs") {
             include("*.jar")
             exclude('freeplane-' + project.version + '.jar')

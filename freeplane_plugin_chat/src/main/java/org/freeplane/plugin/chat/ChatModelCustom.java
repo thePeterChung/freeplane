@@ -2,36 +2,42 @@ package org.freeplane.plugin.chat;
 
 import dev.langchain4j.internal.Utils;
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 
-public class ChatModel {
-    ChatLanguageModel model;
+public class ChatModelCustom {
+    ChatModel model;
 
-    public ChatLanguageModel createModel(String modelType, ChatModelProp prop) {
+    public ChatModel createModel(String modelType, ChatModelProp prop) {
         if (modelType.equals("openai")) {
             model = OpenAiChatModel.builder()
                     .baseUrl(prop.baseUrl)
                     .apiKey(prop.apiKey)
                     .organizationId(prop.organizationId)
+                    .projectId(prop.projectId)
                     .modelName(prop.modelName)
                     .temperature(prop.temperature)
                     .topP(prop.topP)
                     .stop(prop.stop)
                     .maxTokens(prop.maxTokens)
+                    .maxCompletionTokens(prop.maxCompletionTokens)
                     .presencePenalty(prop.presencePenalty)
                     .frequencyPenalty(prop.frequencyPenalty)
                     .logitBias(prop.logitBias)
                     .responseFormat(prop.responseFormat)
+                    .strictJsonSchema(prop.strictJsonSchema)
                     .seed(prop.seed)
                     .user(prop.user)
+                    .strictTools(prop.strictTools)
+                    .parallelToolCalls(prop.parallelToolCalls)
+                    .store(prop.store)
+                    .metadata(prop.metadata)
+                    .serviceTier(prop.serviceTier)
                     .timeout(prop.timeout)
                     .maxRetries(prop.maxRetries)
-                    .proxy(prop.proxy)
                     .logRequests(prop.logRequests)
                     .logResponses(prop.logResponses)
-                    .tokenizer(prop.tokenizer)
                     .customHeaders(prop.customHeaders)
                     .listeners(prop.listeners)
                     .build();
@@ -48,10 +54,15 @@ public class ChatModel {
                     .topK(prop.topK)
                     .maxTokens(prop.maxTokens)
                     .stopSequences(prop.stopSequences)
+                    .cacheSystemMessages(prop.cacheSystemMessages)
+                    .cacheTools(prop.cacheTools)
+                    .thinkingType(prop.thinkingType)
+                    .thinkingBudgetTokens(prop.thinkingBudgetTokens)
                     .timeout(prop.timeout)
                     .maxRetries(prop.maxRetries)
                     .logRequests(prop.logRequests)
                     .logResponses(prop.logResponses)
+                    .listeners(prop.listeners)
                     .build();
         }
         if (modelType.equals("ollama")) {
@@ -66,7 +77,6 @@ public class ChatModel {
                     .numPredict(prop.numPredict)
                     .numCtx(prop.numCtx)
                     .stop(prop.stop)
-                    .format(prop.format)
                     .timeout(prop.timeout)
                     .maxRetries(prop.maxRetries)
                     .customHeaders(prop.customHeaders)

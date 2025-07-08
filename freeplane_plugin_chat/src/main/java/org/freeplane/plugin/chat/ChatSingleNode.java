@@ -19,11 +19,11 @@
  */
 package org.freeplane.plugin.chat;
 
-import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.TextContent;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
 import org.freeplane.core.ui.AFreeplaneAction;
 import org.freeplane.features.map.IMapSelection;
 import org.freeplane.features.map.NodeModel;
@@ -42,7 +42,8 @@ class ChatSingleNode extends AFreeplaneAction {
 	private static final long serialVersionUID = 1L;
 	Controller controller;
 	ChatHelper chatHelper;
-	ChatLanguageModel model;
+	ChatModel model;
+	ChatModelCustom chatModelCustom;
 	MTextController textController;
 	ChatModel chatModel;
 	ChatContext chatContext;
@@ -53,7 +54,7 @@ class ChatSingleNode extends AFreeplaneAction {
 		controller = Controller.getCurrentController();
 		textController = MTextController.getController();
 		chatHelper = new ChatHelper();
-		chatModel = new ChatModel();
+		chatModelCustom = new ChatModelCustom();
 	}
 
 	@Override
@@ -70,29 +71,29 @@ class ChatSingleNode extends AFreeplaneAction {
 			ChatModelProp prop = new ChatModelProp();
 			prop.populateFromNode(found);
 			if ((detail.getText().contains("openai"))) {
-				model = chatModel.createModel("openai", prop);
+				model = chatModelCustom.createModel("openai", prop);
 			}
 			if ((detail.getText().contains("anthropic"))) {
-				model = chatModel.createModel("anthropic", prop);
+				model = chatModelCustom.createModel("anthropic", prop);
 			}
 			if ((detail.getText().contains("ollama"))) {
-				model = chatModel.createModel("ollama", prop);
+				model = chatModelCustom.createModel("ollama", prop);
 			}
 			UserMessage userMessage = UserMessage.from(
 					TextContent.from(String.valueOf(text).replaceAll("--paste",""))
 			);
 			context.add(userMessage);
 			try {
-				AiMessage finalResponse = model.generate(context).content();
-				System.out.println(finalResponse.text());
+				ChatResponse finalResponse = model.chat(context);
+				System.out.println(finalResponse.aiMessage());
 				final NodeModel nodeSelected = controller.getSelection().getSelected();
 				chatHelper.addAttributeToNode(nodeSelected, userMessage);
-				chatHelper.addAttributeToNode(nodeSelected, finalResponse);
+				chatHelper.addAttributeToNode(nodeSelected, finalResponse.aiMessage());
 				String coreText = nodeSelected.getText();
 				int pasteIndex = coreText.indexOf("--paste");
 				if (pasteIndex >= 0) {
 					MMapClipboardController clipboardController = (MMapClipboardController) MapClipboardController.getController();
-					clipboardController.paste(new StringSelection(finalResponse.text()),nodeSelected);
+					clipboardController.paste(new StringSelection(finalResponse.aiMessage().text()),nodeSelected);
 				}
 			} catch(Exception exception) {
 				System.out.println(exception.getMessage());

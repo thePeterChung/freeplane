@@ -1,11 +1,9 @@
 package org.freeplane.plugin.chat;
 
-import dev.langchain4j.model.Tokenizer;
 import dev.langchain4j.model.chat.listener.ChatModelErrorContext;
 import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.chat.listener.ChatModelRequestContext;
 import dev.langchain4j.model.chat.listener.ChatModelResponseContext;
-import dev.langchain4j.model.openai.OpenAiTokenizer;
 import org.freeplane.features.map.NodeModel;
 
 import java.net.InetSocketAddress;
@@ -18,7 +16,7 @@ enum EChatModelProp
 {
     // This will call enum constructor with one
     // String argument
-    CLASS("java.lang.Class"), BASEURL("baseUrl"), APIKEY("apiKey"), ORGANIZATIONID("organizationId"), CLIENT("client"), MODELNAME("modelName"), TEMPERATURE("temperature"), TOPP("topP"), STOP("stop"), MAXTOKENS("maxTokens"), PRESENCEPENALTY("presencePenalty"), FREQUENCYPENALTY("frequencyPenalty"), LOGITBIAS("logitBias"), RESPONSEFORMAT("responseFormat"), SEED("seed"), USER("user"), TIMEOUT("timeout"), MAXRETRIES("maxRetries"), PROXY("proxy"), LOGREQUESTS("logRequests"), LOGRESPONSES("logResponses"), TOKENIZER("tokenizer"), CUSTOMHEADERS("customHeaders"), LISTENERS("listeners"), ERROR("error"),
+    CLASS("java.lang.Class"), BASEURL("baseUrl"), APIKEY("apiKey"), ORGANIZATIONID("organizationId"), PROJECTID("projectId"), CLIENT("client"), MODELNAME("modelName"), TEMPERATURE("temperature"), TOPP("topP"), STOP("stop"), MAXTOKENS("maxTokens"), MAXCOMPLETIONTOKENS("maxCompletionTokens"), PRESENCEPENALTY("presencePenalty"), FREQUENCYPENALTY("frequencyPenalty"), LOGITBIAS("logitBias"), RESPONSEFORMAT("responseFormat"), STRICTJSONSCHEMA("strictJsonSchema"), SEED("seed"), USER("user"), STRICTTOOLS("strictTools"), PARALLELTOOLCALLS("parallelToolCalls"), STORE("store"), METADATA("metadata"), SERVICETIER("serviceTier"), CACHESYSTEMMESSAGES("cacheSystemMessages"), CACHETOOLS("cacheTools"), THINKINGTYPE("thinkingType"), THINKINGBUDGETTOKENS("thinkingBudgetTokens"), TIMEOUT("timeout"), MAXRETRIES("maxRetries"), PROXY("proxy"), LOGREQUESTS("logRequests"), LOGRESPONSES("logResponses"), TOKENIZER("tokenizer"), CUSTOMHEADERS("customHeaders"), LISTENERS("listeners"), ERROR("error"),
     VERSION("version"), BETA("beta"), TOPK("topK"), STOPSEQUENCES("stopSequences"), REPEATPENALTY("repeatPenalty"), NUMPREDICT("numPredict"), NUMCTX("numCtx"), FORMAT("format");
     // declaring private variable for getting values
     private String action;
@@ -40,23 +38,32 @@ public class ChatModelProp {
     String baseUrl;
     String apiKey;
     String organizationId;
+    String projectId;
     String modelName;
     Double temperature;
     Double topP;
     List<String> stop;
     Integer maxTokens;
+    Integer maxCompletionTokens;
     Double presencePenalty;
     Double frequencyPenalty;
     Map<String, Integer> logitBias;
     String responseFormat;
     Integer seed;
     String user;
+    Boolean strictJsonSchema;
+    Boolean strictTools;
+    Boolean parallelToolCalls;
+    Boolean store;
+    Map<String, String> metadata;
+    String serviceTier;
+
     Duration timeout;
     Integer maxRetries;
     Proxy proxy;
     Boolean logRequests;
     Boolean logResponses;
-    Tokenizer tokenizer;
+    String tokenizer;
     Map<String, String> customHeaders;
     List<ChatModelListener> listeners;
 
@@ -65,6 +72,10 @@ public class ChatModelProp {
     String beta;
     Integer topK;
     List<String> stopSequences;
+    Boolean cacheSystemMessages;
+    Boolean cacheTools;
+    String thinkingType;
+    Integer thinkingBudgetTokens;
 
     // Specific prop for ollama
     Double repeatPenalty;
@@ -88,6 +99,9 @@ public class ChatModelProp {
         String organizationIdStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.ORGANIZATIONID);
         if (!organizationIdStr.isEmpty()) { organizationId = organizationIdStr; }
 
+        String projectIdStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.PROJECTID);
+        if (!projectIdStr.isEmpty()) { projectId = projectIdStr; }
+
         String modelNameStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.MODELNAME);
         if (!modelNameStr.isEmpty()) { modelName = modelNameStr; }
 
@@ -105,6 +119,9 @@ public class ChatModelProp {
 
         String maxTokensStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.MAXTOKENS);
         if (!maxTokensStr.isEmpty()) { maxTokens = Integer.valueOf(maxTokensStr); }
+
+        String maxCompletionTokensStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.MAXCOMPLETIONTOKENS);
+        if (!maxCompletionTokensStr.isEmpty()) { maxCompletionTokens = Integer.valueOf(maxCompletionTokensStr); }
 
         String presencePenaltyStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.PRESENCEPENALTY);
         if (!presencePenaltyStr.isEmpty()) { presencePenalty = Double.valueOf(presencePenaltyStr); }
@@ -136,6 +153,36 @@ public class ChatModelProp {
         String userStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.USER);
         if (!userStr.isEmpty()) { user = userStr; }
 
+        String strictJsonSchemaStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.STRICTJSONSCHEMA);
+        if (!strictJsonSchemaStr.isEmpty()) { strictJsonSchema = Boolean.parseBoolean(strictJsonSchemaStr); }
+
+        String strictToolsStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.STRICTTOOLS);
+        if (!strictToolsStr.isEmpty()) { strictTools = Boolean.parseBoolean(strictToolsStr); }
+
+        String parallelToolCallsStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.PARALLELTOOLCALLS);
+        if (!parallelToolCallsStr.isEmpty()) { parallelToolCalls = Boolean.parseBoolean(parallelToolCallsStr); }
+
+        String storeStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.STORE);
+        if (!storeStr.isEmpty()) { store = Boolean.parseBoolean(storeStr); }
+
+        // metadata format should be "m1:m1, m2:m2, m3:m3";
+        String metadataStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.METADATA);
+        if (!metadataStr.isEmpty()) {
+            metadata = new HashMap<String, String>();
+            String metadataParts[] = metadataStr.split(",");
+
+            for (String part : metadataParts) {
+
+                String metadataData[] = part.split(":");
+                String metadataA = metadataData[0].trim();
+                String metadataB = metadataData[1].trim();
+                metadata.put(metadataA, metadataB);
+            }
+        }
+
+        String serviceTierStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.SERVICETIER);
+        if (!serviceTierStr.isEmpty()){ serviceTier = serviceTierStr; }
+
         String timeoutStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.TIMEOUT);
         if (!timeoutStr.isEmpty()) { timeout = Duration.parse(timeoutStr); }
 
@@ -157,9 +204,9 @@ public class ChatModelProp {
         if (!logResponsesStr.isEmpty()) { logResponses = Boolean.parseBoolean(logResponsesStr); }
 
         String tokenizerStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.TOKENIZER);
-        if (!tokenizerStr.isEmpty()) { tokenizer = new OpenAiTokenizer(tokenizerStr); }
+        if (!tokenizerStr.isEmpty()) { tokenizer = (tokenizerStr); }
 
-        // customHeaders format should be "h1:h1, h2:h2, h3: h3";
+        // customHeaders format should be "h1:h1, h2:h2, h3:h3";
         String customHeadersStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.CUSTOMHEADERS);
         if (!customHeadersStr.isEmpty()) {
             customHeaders = new HashMap<String, String>();
@@ -180,17 +227,17 @@ public class ChatModelProp {
 
                 @Override
                 public void onRequest(ChatModelRequestContext requestContext) {
-                    System.out.println("Request: " + requestContext.request().messages());
+                    System.out.println("onRequest: " + requestContext.chatRequest().messages());
                 }
 
                 @Override
                 public void onResponse(ChatModelResponseContext responseContext) {
-                    System.out.println("Response: " + responseContext.response().aiMessage());
+                    System.out.println("Response: " + responseContext.chatResponse().aiMessage());
                 }
 
                 @Override
                 public void onError(ChatModelErrorContext errorContext) {
-                    errorContext.error().printStackTrace();
+                    System.out.println("Response: " + errorContext.error().getMessage());
                 }
             };
             listeners = new ArrayList<ChatModelListener>();
@@ -211,6 +258,18 @@ public class ChatModelProp {
             String[] strSplitStop = stopSequencesStr.split(",");
             stopSequences = new ArrayList<String>(Arrays.asList(strSplitStop));
         }
+
+        String cacheSystemMessagesStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.CACHESYSTEMMESSAGES);
+        if (!cacheSystemMessagesStr.isEmpty()) { cacheSystemMessages = Boolean.parseBoolean(cacheSystemMessagesStr); }
+
+        String cacheToolsStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.CACHETOOLS);
+        if (!cacheToolsStr.isEmpty()) { cacheTools = Boolean.parseBoolean(cacheToolsStr); }
+
+        String thinkingTypeStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.THINKINGTYPE);
+        if (!thinkingTypeStr.isEmpty()){ thinkingType = thinkingTypeStr; }
+
+        String thinkingBudgetTokensStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.THINKINGBUDGETTOKENS);
+        if (!thinkingBudgetTokensStr.isEmpty()) { thinkingBudgetTokens = Integer.valueOf(thinkingBudgetTokensStr); }
 
         String repeatPenaltyStr = chatHelper.getAttributeValueFromNode(found, EChatModelProp.REPEATPENALTY);
         if (!repeatPenaltyStr.isEmpty()) { repeatPenalty = Double.valueOf(repeatPenaltyStr); }

@@ -1,6 +1,6 @@
 package org.freeplane.plugin.chat;
 
-import dev.langchain4j.model.anthropic.AnthropicChatModel;
+import dev.langchain4j.model.ollama.OllamaLanguageModel;
 import org.freeplane.core.ui.AFreeplaneAction;
 import org.freeplane.features.map.NodeModel;
 import org.freeplane.features.map.mindmapmode.MMapController;
@@ -19,7 +19,7 @@ public class ChatOllama extends AFreeplaneAction {
     @Override
     public void actionPerformed(final ActionEvent e) {
         ChatHelper chatHelper = new ChatHelper();
-        List<OfField> inTheClass = chatHelper.fromTheClass( AnthropicChatModel.AnthropicChatModelBuilder.class);
+        List<OfField> inTheClass = chatHelper.fromTheClass(OllamaLanguageModel.OllamaLanguageModelBuilder.class);
         MMapController mapController = (MMapController) Controller.getCurrentModeController().getMapController();
         NodeModel root = mapController.getRootNode();
         String nodeText = "config";
